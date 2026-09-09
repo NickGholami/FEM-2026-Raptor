@@ -1,0 +1,1308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FEM Builder</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --ink:#1c2230; --muted:#6b7280;
+    --line:#e2e5ea; --accent:#2f6feb; --accent-soft:#e7effd;
+    --node:#1c2230; --node-sel:#2f6feb; --elem:#4b5563; --elem-sel:#2f6feb;
+    --load:#e5484d; --bc:#0b8a5b; --grid:#e9ebef; --grid-strong:#d5d9e0;
+    --danger:#e5484d; --guide:#b8730a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12151c; --panel:#1a1e27; --ink:#e6e9ef; --muted:#9aa2b1;
+      --line:#2a2f3a; --accent:#5b8dff; --accent-soft:#1e2a45;
+      --node:#e6e9ef; --node-sel:#5b8dff; --elem:#9aa2b1; --elem-sel:#5b8dff;
+      --load:#ff6b6f; --bc:#2bd08a; --grid:#1f242e; --grid-strong:#2a303c; --guide:#e0a458;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12151c; --panel:#1a1e27; --ink:#e6e9ef; --muted:#9aa2b1;
+    --line:#2a2f3a; --accent:#5b8dff; --accent-soft:#1e2a45;
+    --node:#e6e9ef; --node-sel:#5b8dff; --elem:#9aa2b1; --elem-sel:#5b8dff;
+    --load:#ff6b6f; --bc:#2bd08a; --grid:#1f242e; --grid-strong:#2a303c; --guide:#e0a458;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:14px;padding:8px 14px;
+    background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .badge{font-size:11px;color:var(--muted);border:1px solid var(--line);
+    padding:2px 7px;border-radius:20px}
+  .spacer{flex:1}
+  .field{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .field input{width:70px}
+  input,select{background:var(--bg);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:5px 8px;font:inherit;font-size:13px}
+  input:focus,select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  button{background:var(--panel);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:6px 11px;font:inherit;font-size:13px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:default;border-color:var(--line)}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  button.primary:hover{filter:brightness(1.05)}
+  button.ghostdanger{color:var(--danger);border-color:var(--line)}
+  button.ghostdanger:hover{border-color:var(--danger)}
+  .shape{padding:3px 9px;font-size:12px}
+  .shape.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+  [hidden]{display:none!important}
+  main{flex:1;display:flex;min-height:0}
+  .toolbar{width:56px;background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0}
+  .tool{width:40px;height:40px;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;border-radius:10px;border:1px solid transparent;cursor:pointer;
+    color:var(--muted);gap:2px}
+  .tool:hover{background:var(--bg)}
+  .tool.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+  .tool svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7}
+  .tool small{font-size:8.5px;letter-spacing:.3px}
+  .canvas-wrap{flex:1;position:relative;min-width:0}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  .status{position:absolute;left:10px;bottom:10px;background:var(--panel);
+    border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12px;
+    color:var(--muted);pointer-events:none;max-width:70%}
+  .status b{color:var(--ink);font-weight:600}
+  .hint{position:absolute;right:10px;bottom:10px;background:var(--panel);
+    border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:11.5px;
+    color:var(--muted);pointer-events:none}
+  aside{width:300px;background:var(--panel);border-left:1px solid var(--line);
+    padding:14px;overflow:auto}
+  aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+    margin:0 0 10px}
+  .empty{color:var(--muted);font-size:13px;padding:20px 4px;text-align:center;line-height:1.6}
+  .row{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .row label{width:78px;color:var(--muted);font-size:12px;flex:none}
+  .row input{flex:1;min-width:0}
+  .grp{border:1px solid var(--line);border-radius:10px;padding:11px;margin-bottom:12px}
+  .grp .title{font-weight:650;font-size:13px;margin-bottom:9px;display:flex;
+    align-items:center;justify-content:space-between}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;
+    background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .metric{font-size:13px;color:var(--muted);margin-bottom:6px}
+  .metric b{color:var(--ink);font-weight:600}
+  .constraint{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .constraint input[type=checkbox]{width:16px;height:16px}
+  .constraint .cval{flex:1}
+  .constraint span.dim{color:var(--muted);font-size:12px;width:16px}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;
+    align-items:center;justify-content:center;z-index:50}
+  .modal-bg.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    width:min(680px,92vw);max-height:86vh;display:flex;flex-direction:column;
+    box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal header{border-bottom:1px solid var(--line);border-radius:14px 14px 0 0}
+  .modal .body{padding:14px;overflow:auto}
+  .modal textarea{width:100%;height:48vh;background:var(--bg);color:var(--ink);
+    border:1px solid var(--line);border-radius:10px;padding:12px;
+    font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+  .modal .foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 14px;
+    border-top:1px solid var(--line)}
+  .warn{color:var(--load);font-size:12px;margin-top:8px}
+  details{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+  details>summary{cursor:pointer;padding:9px 12px;font-weight:650;font-size:13px;background:var(--bg);list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸ ";color:var(--muted)}
+  details[open]>summary::before{content:"▾ "}
+  .dtl-inner{padding:10px 12px;overflow:auto}
+  table.mat{border-collapse:collapse;font:12px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+  table.mat th,table.mat td{border:1px solid var(--line);padding:3px 7px;text-align:right;white-space:nowrap}
+  table.mat th{background:var(--bg);color:var(--muted);font-weight:600;text-align:center}
+  table.data{border-collapse:collapse;width:100%;font-size:13px}
+  table.data th,table.data td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:right}
+  table.data th{color:var(--muted);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.4px}
+  table.data td:first-child,table.data th:first-child{text-align:left}
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:600}
+  .pill.comp{background:rgba(229,72,77,.15);color:var(--load)}
+  .pill.tens{background:var(--accent-soft);color:var(--accent)}
+  .pill.none{background:rgba(11,138,91,.15);color:var(--bc)}
+  .reslegend{position:absolute;left:10px;top:10px;background:var(--panel);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font-size:11.5px;line-height:1.7}
+  .reslegend .sw{display:inline-block;width:16px;height:0;border-top-width:3px;border-top-style:solid;
+    vertical-align:middle;margin-right:6px}
+  #resDock{display:flex;flex-direction:column;background:var(--panel);min-height:0}
+  #resDock.side{width:380px;border-left:1px solid var(--line)}
+  #resDock.bottom{height:44vh;border-top:1px solid var(--line)}
+  #resDock .rd-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);flex:none}
+  #resDock .rd-head button{padding:4px 9px;font-size:12px}
+  #resDock .rd-body{padding:12px;overflow:auto;flex:1;min-height:0}
+  #settingsPanel{position:fixed;top:52px;right:14px;z-index:60;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:14px;width:260px;
+    box-shadow:0 14px 44px rgba(0,0,0,.28)}
+  #settingsPanel h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;
+    letter-spacing:.6px;color:var(--muted)}
+  .sp-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .sp-row label{font-size:12px;color:var(--muted);width:66px;flex:none}
+  .sp-row input[type=range]{flex:1;min-width:0}
+  .sp-row .val{width:24px;text-align:right;font-size:12px;color:var(--ink);font-weight:600}
+  .sp-hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+</style>
+</head>
+<body>
+<header>
+  <h1>FEM Builder</h1><span class="badge">FlExtract-style · truss</span>
+  <div class="spacer"></div>
+  <button id="themeBtn" title="Toggle light / dark">🌙 Dark</button>
+  <button id="settingsBtn" title="Settings">⚙ Settings</button>
+  <div class="field">grid <input id="grid" type="number" value="0.5" step="0.1" min="0.05"></div>
+  <div class="field" id="refShapes" hidden>ref
+    <button class="shape active" data-shape="rect">▭ box</button>
+    <button class="shape" data-shape="line">╱ line</button>
+    <button class="shape" data-shape="circle">◯ circle</button>
+  </div>
+  <div class="field">plotdof <input id="plotdof" type="number" value="1" step="1" min="1"></div>
+  <div class="field">file <input id="fname" type="text" value="my_mesh.m" style="width:120px"></div>
+  <div class="field" id="dscaleWrap" hidden>disp× <input id="dscale" type="number" value="1" step="0.5" style="width:62px"><button id="autoScaleBtn" title="Auto-scale deformation">auto</button></div>
+  <button id="fitBtn" title="Zoom to fit all (F)">⊡ Fit</button>
+  <button id="undoBtn" title="Undo (Ctrl/Cmd+Z)" disabled>↶ Undo</button>
+  <button id="clearBtn" class="ghostdanger">Clear</button>
+  <button id="resultsBtn" hidden>▤ Results</button>
+  <button id="solveBtn" class="primary">Solve ▸</button>
+  <button id="exportBtn">Export .m</button>
+</header>
+
+<div id="settingsPanel" hidden>
+  <h3>Settings</h3>
+  <div class="sp-row"><label>Label size</label>
+    <input id="lblSize" type="range" min="8" max="30" step="1" value="14">
+    <span class="val" id="lblSizeVal">14</span></div>
+  <div class="sp-hint">Font size of the n and e labels.</div>
+  <div class="sp-hint" style="margin-top:10px">In <b>Select</b> mode, drag the n / e labels or a force arrow to reposition it — purely visual, it never changes the model. Double-click one to snap it back.</div>
+  <button id="resetLabels" style="margin-top:12px;width:100%">Reset label positions</button>
+</div>
+
+<main id="mainRow">
+  <div class="toolbar" id="toolbar">
+    <div class="tool active" data-tool="select" title="Select / edit (V)">
+      <svg viewBox="0 0 24 24"><path d="M5 3l6 16 2-6 6-2z"/></svg><small>SEL</small></div>
+    <div class="tool" data-tool="node" title="Add node (N)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><small>NODE</small></div>
+    <div class="tool" data-tool="element" title="Add element (E)">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="6" r="2.4"/><path d="M7.7 16.3l8.6-8.6"/></svg><small>ELEM</small></div>
+    <div class="tool" data-tool="ref" title="Reference geometry (R)">
+      <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1" stroke-dasharray="3 2"/></svg><small>REF</small></div>
+    <div class="tool" data-tool="lasso" title="Lasso select nodes & elements (L)">
+      <svg viewBox="0 0 24 24"><path d="M4 9c0-3 4-5 8-5s8 2 8 5-4 5-8 5c-2 0-3 0-4 1s0 3-2 3-2-2-1-3" stroke-dasharray="3 2.5"/></svg><small>LASSO</small></div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="cv"></canvas>
+    <div class="status" id="status">Ready.</div>
+    <div class="hint">wheel: zoom · space/middle-drag: pan · Del: delete</div>
+    <div class="reslegend" id="reslegend" hidden>
+      <div><span class="sw" style="border-top-color:var(--elem);opacity:.4"></span>undeformed</div>
+      <div><span class="sw" style="border-top-color:var(--accent)"></span>tension</div>
+      <div><span class="sw" style="border-top-color:var(--load)"></span>compression</div>
+      <div><span class="sw" style="border-top-color:var(--bc)"></span>non-loaded</div>
+    </div>
+  </div>
+
+  <aside id="inspector"><h2>Inspector</h2><div class="empty" id="inspBody">
+    Nothing selected.<br><br>Use <b>NODE</b> to place nodes,<br><b>ELEM</b> to connect two nodes,<br><b>REF</b> to trace reference geometry,<br><b>SEL</b> to edit them.
+  </div></aside>
+  <div id="resDock" hidden>
+    <div class="rd-head">
+      <b>FEA results</b><span class="badge" id="rdSummary"></span>
+      <div class="spacer"></div>
+      <button data-mode="modal" title="Show as popover">⤢ Popover</button>
+      <button data-mode="side" title="Dock right">⇥</button>
+      <button data-mode="bottom" title="Dock bottom">⤓</button>
+      <button id="rdClose" class="ghostdanger">✕</button>
+    </div>
+    <div class="rd-body" id="rdBody"></div>
+  </div>
+</main>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <header><h1>Export — <span id="expName">mesh.m</span></h1><div class="spacer"></div>
+      <span class="badge" id="expCounts"></span></header>
+    <div class="body">
+      <textarea id="expText" spellcheck="false"></textarea>
+      <div class="warn" id="expWarn"></div>
+    </div>
+    <div class="foot">
+      <button id="copyBtn">Copy</button>
+      <button id="dlBtn" class="primary">Download .m</button>
+      <button id="closeModal">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="resModalBg">
+  <div class="modal" style="width:min(860px,94vw)">
+    <header><h1>FEA results</h1><div class="spacer"></div><span class="badge" id="resSummary"></span>
+      <button data-mode="side" title="Dock right">⇥ Side</button>
+      <button data-mode="bottom" title="Dock bottom">⤓ Bottom</button></header>
+    <div class="body" id="resBody"></div>
+    <div class="foot">
+      <button id="closeRes" class="primary">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------- state ----------
+let uidc = 1;
+const uid = () => uidc++;
+const nodes = [];   // {uid,x,y}
+const elements = []; // {uid,a,b,E,A}
+const loads = [];    // {node(uid),dof,value}
+const bounds = [];   // {node(uid),dof,value}
+const guides = [];         // {uid,type,x,y,x2,y2} purely-visual reference geometry
+let tool = "select";
+let selection = null;      // {type:'node'|'element'|'guide', uid}
+let pendingNode = null;    // uid for element creation
+let refShape = "rect";     // active reference-geometry shape
+let guideDraft = null;     // guide currently being drawn
+let dragStart = null;      // {sx,sy} to tell a click from a drag in ref/lasso mode
+const multi = {nodes:new Set(), elements:new Set()}; // lasso multi-selection (nodes & elements only)
+let lassoRect = null;      // {x0,y0,x1,y1} screen rect while lassoing
+const history = [];        // undo stack of serialized states
+let results = null;        // FEA results {order, ndof, D, kes, K, elems, ...}; overlaid when present
+let dispScale = 1;         // deformation display scale
+const LBL = {base:14, sub:10};  // label font sizes (px), driven by the settings slider
+let draggingLabel = null;  // {obj, sx, sy, lx, ly} while dragging a label / force (visual only)
+let labelHits = [];        // per-frame draggable-label hitboxes {obj,x,y,w,h}
+const labelOff = o => ({x:o.lx || 0, y:o.ly || 0});  // stored visual offset of a label/force
+
+// view transform
+let scale = 70;            // px per world unit
+let ox = 0, oy = 0;        // screen px of world origin (set on init)
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const statusEl = document.getElementById("status");
+
+// ---------- helpers ----------
+const gridSpacing = () => Math.max(0.05, parseFloat(document.getElementById("grid").value) || 0.5);
+const nodeByUid = u => nodes.find(n => n.uid === u);
+const nodeIndex = u => nodes.findIndex(n => n.uid === u); // 0-based
+const nodeNum = u => nodeIndex(u) + 1;
+const elemNum = e => elements.indexOf(e) + 1;
+const nodeName = u => "n_" + nodeNum(u);   // plain (unused in display now)
+const elemName = e => "e_" + elemNum(e);
+const nodeHTML = u => 'n<sub>' + nodeNum(u) + '</sub>';   // LaTeX-style subscript for HTML
+const elemHTML = e => 'e<sub>' + elemNum(e) + '</sub>';
+const w2sx = x => ox + x * scale;
+const w2sy = y => oy - y * scale;
+const s2wx = sx => (sx - ox) / scale;
+const s2wy = sy => (oy - sy) / scale;
+function snap(v){ const g = gridSpacing(); return Math.round(v / g) * g; }
+function fmt(v){
+  if (Object.is(v, -0)) v = 0;
+  if (Number.isInteger(v)) return String(v);
+  return String(parseFloat(v.toFixed(6)));
+}
+function setStatus(html){ statusEl.innerHTML = html; }
+function elemLength(e){
+  const a = nodeByUid(e.a), b = nodeByUid(e.b);
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+function clearMulti(){ multi.nodes.clear(); multi.elements.clear(); }
+
+// ---------- undo history ----------
+function serialize(){ return JSON.stringify({nodes, elements, loads, bounds, guides}); }
+function pushHistory(){
+  const s = serialize();
+  if (history[history.length-1] === s) return;   // no duplicate snapshots
+  history.push(s);
+  if (history.length > 200) history.shift();
+  invalidateResults();                            // any edit makes stale results
+  updateUndoBtn();
+}
+function loadState(s){
+  nodes.length=0; nodes.push(...s.nodes);
+  elements.length=0; elements.push(...s.elements);
+  loads.length=0; loads.push(...s.loads);
+  bounds.length=0; bounds.push(...s.bounds);
+  guides.length=0; guides.push(...s.guides);
+}
+function undo(){
+  const cur = serialize();
+  while (history.length){
+    const s = history.pop();
+    if (s !== cur){                               // skip snapshots identical to current
+      loadState(JSON.parse(s));
+      selection = null; pendingNode = null; guideDraft = null; lassoRect = null; clearMulti();
+      renderInspector(); draw(); updateUndoBtn(); return;
+    }
+  }
+  updateUndoBtn();
+}
+function updateUndoBtn(){ const b = document.getElementById("undoBtn"); if (b) b.disabled = history.length === 0; }
+
+// ---------- canvas sizing ----------
+function resize(){
+  const r = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (ox === 0 && oy === 0){ ox = r.width * 0.18; oy = r.height * 0.82; }
+  draw();
+}
+window.addEventListener("resize", resize);
+
+// ---------- drawing ----------
+function draw(){
+  const W = cv.clientWidth, H = cv.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+  labelHits = [];   // rebuilt each frame as labels/forces are drawn
+  drawGrid(W, H);
+  // reference geometry (purely visual, drawn behind everything)
+  for (const gd of guides) drawGuide(gd, selection && selection.type==="guide" && selection.uid===gd.uid);
+  if (guideDraft) drawGuide(guideDraft, true);
+  // elements
+  for (const e of elements) drawElement(e);
+  // pending element rubber-band handled on mousemove via draw()
+  if (tool === "element" && pendingNode != null){
+    const a = nodeByUid(pendingNode);
+    if (a && lastMouse){
+      ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.5; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(w2sx(a.x), w2sy(a.y)); ctx.lineTo(lastMouse.x, lastMouse.y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+  // decorations
+  for (const b of bounds) drawBC(b);
+  for (const l of loads) drawLoad(l);
+  // deformed overlay (drawn under nodes/labels so numbers stay legible)
+  if (results) drawResults();
+  // nodes
+  for (const n of nodes) drawNode(n);
+  // lasso selection rectangle (on top)
+  if (lassoRect){
+    const x = Math.min(lassoRect.x0, lassoRect.x1), y = Math.min(lassoRect.y0, lassoRect.y1);
+    const w = Math.abs(lassoRect.x1 - lassoRect.x0), h = Math.abs(lassoRect.y1 - lassoRect.y0);
+    ctx.fillStyle = css("--accent-soft"); ctx.globalAlpha = 0.45; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 1;
+    ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.2; ctx.setLineDash([5,3]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+  }
+}
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function drawGrid(W, H){
+  const g = gridSpacing();
+  const x0 = s2wx(0), x1 = s2wx(W), y0 = s2wy(H), y1 = s2wy(0);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = css("--grid");
+  ctx.beginPath();
+  for (let x = Math.ceil(x0 / g) * g; x <= x1; x += g){
+    const sx = w2sx(x); ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
+  }
+  for (let y = Math.ceil(y0 / g) * g; y <= y1; y += g){
+    const sy = w2sy(y); ctx.moveTo(0, sy); ctx.lineTo(W, sy);
+  }
+  ctx.stroke();
+  // axes
+  ctx.strokeStyle = css("--grid-strong"); ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, oy); ctx.lineTo(W, oy);
+  ctx.moveTo(ox, 0); ctx.lineTo(ox, H);
+  ctx.stroke();
+  // axis tick numbers (spaced so labels never crowd)
+  let step = g; while (step * scale < 55) step *= 2;
+  ctx.fillStyle = css("--muted"); ctx.font = "10px system-ui,sans-serif";
+  const yLab = Math.min(Math.max(oy + 11, 11), H - 4);   // x-labels ride the x-axis, clamped on screen
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (let x = Math.ceil(x0 / step) * step; x <= x1; x += step){
+    if (Math.abs(x) < step*1e-6) continue;
+    ctx.fillText(fmt(parseFloat(x.toFixed(6))), w2sx(x), yLab);
+  }
+  const xLab = Math.min(Math.max(ox - 6, 16), W - 6);    // y-labels ride the y-axis, clamped on screen
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step){
+    if (Math.abs(y) < step*1e-6) continue;
+    ctx.fillText(fmt(parseFloat(y.toFixed(6))), xLab, w2sy(y));
+  }
+  ctx.textAlign = "right"; ctx.textBaseline = "top";
+  ctx.fillText("0", Math.min(Math.max(ox - 4, 16), W - 4), Math.min(Math.max(oy + 4, 4), H - 12));
+}
+
+function drawElement(e){
+  const a = nodeByUid(e.a), b = nodeByUid(e.b);
+  if (!a || !b) return;
+  const sel = (selection && selection.type === "element" && selection.uid === e.uid) || multi.elements.has(e.uid);
+  const faded = !!results;                 // undeformed geometry fades once solved
+  ctx.save();
+  if (faded) ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = sel ? css("--elem-sel") : css("--elem");
+  ctx.lineWidth = sel ? 4 : 2.5;
+  ctx.beginPath(); ctx.moveTo(w2sx(a.x), w2sy(a.y)); ctx.lineTo(w2sx(b.x), w2sy(b.y)); ctx.stroke();
+  // label (subscript) — offset is a purely-visual drag position
+  const off = labelOff(e);
+  const mx = (w2sx(a.x) + w2sx(b.x)) / 2, my = (w2sy(a.y) + w2sy(b.y)) / 2;
+  const bb = labelSub("e", elemNum(e), mx + off.x, my - 8 + off.y, sel ? css("--elem-sel") : css("--muted"));
+  labelHits.push({obj:e, ...bb});
+  ctx.restore();
+}
+
+function drawNode(n){
+  const sx = w2sx(n.x), sy = w2sy(n.y);
+  const sel = selection && selection.type === "node" && selection.uid === n.uid;
+  const m = multi.nodes.has(n.uid);
+  const pend = pendingNode === n.uid;
+  ctx.save();
+  if (results) ctx.globalAlpha = 0.32;      // fade undeformed node dot when solved
+  ctx.beginPath(); ctx.arc(sx, sy, (sel||m) ? 7 : 5.5, 0, 7);
+  ctx.fillStyle = (sel||m) ? css("--node-sel") : css("--node"); ctx.fill();
+  if (sel || pend || m){
+    ctx.beginPath(); ctx.arc(sx, sy, 11, 0, 7);
+    ctx.strokeStyle = css("--accent"); ctx.lineWidth = 2; ctx.stroke();
+  }
+  ctx.restore();
+  // label stays fully visible (subscript, a bit bigger) — offset is a visual drag position
+  const off = labelOff(n);
+  const bb = labelSub("n", nodeNum(n.uid), sx + off.x, sy - 16 + off.y, (sel||m) ? css("--node-sel") : css("--ink"));
+  labelHits.push({obj:n, ...bb});
+}
+
+// draws e.g. "n" + a smaller, lowered "1" centred at (x,y); returns its bounding box
+function labelSub(prefix, num, x, y, color){
+  const base = LBL.base, sub = LBL.sub;
+  ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  ctx.font = "600 " + base + "px system-ui,sans-serif";
+  const wP = ctx.measureText(prefix).width;
+  ctx.font = "600 " + sub + "px system-ui,sans-serif";
+  const wN = ctx.measureText(String(num)).width;
+  const startX = x - (wP + wN) / 2;
+  ctx.font = "600 " + base + "px system-ui,sans-serif";
+  ctx.fillText(prefix, startX, y);
+  ctx.font = "600 " + sub + "px system-ui,sans-serif";
+  ctx.fillText(String(num), startX + wP + 0.5, y + base * 0.26);
+  return {x: startX - 3, y: y - base * 0.75, w: wP + wN + 6, h: base * 1.55};
+}
+
+function label(txt, x, y, color, center){
+  ctx.font = "600 11px system-ui,sans-serif";
+  ctx.textAlign = center ? "center" : "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = color; ctx.fillText(txt, x, y);
+}
+
+function drawLoad(l){
+  const n = nodeByUid(l.node); if (!n || l.value === 0) return;
+  const off = labelOff(l);                    // purely-visual drag offset of the force
+  const sx = w2sx(n.x) + off.x, sy = w2sy(n.y) + off.y;
+  const len = 42, sign = Math.sign(l.value);
+  let ex = sx, ey = sy;
+  if (l.dof === 1) ex = sx + sign * len;      // x
+  else ey = sy - sign * len;                  // y (world up = screen up)
+  arrow(sx, sy, ex, ey, css("--load"));
+  const lab = (l.dof === 1 ? "Fx=" : "Fy=") + fmt(l.value);
+  label(lab, (sx+ex)/2 + (l.dof===1?0:14), (sy+ey)/2 + (l.dof===1?-10:0), css("--load"), true);
+  // draggable hitbox around the whole arrow (+ some room for the label)
+  const minx = Math.min(sx, ex) - 14, maxx = Math.max(sx, ex) + 22;
+  const miny = Math.min(sy, ey) - 16, maxy = Math.max(sy, ey) + 16;
+  labelHits.push({obj:l, x:minx, y:miny, w:maxx-minx, h:maxy-miny});
+}
+function arrow(x0,y0,x1,y1,color){
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+  const a = Math.atan2(y1-y0, x1-x0), h = 8;
+  ctx.beginPath(); ctx.moveTo(x1,y1);
+  ctx.lineTo(x1 - h*Math.cos(a - .4), y1 - h*Math.sin(a - .4));
+  ctx.lineTo(x1 - h*Math.cos(a + .4), y1 - h*Math.sin(a + .4));
+  ctx.closePath(); ctx.fill();
+}
+
+function drawBC(b){
+  const n = nodeByUid(b.node); if (!n) return;
+  const sx = w2sx(n.x), sy = w2sy(n.y);
+  ctx.strokeStyle = css("--bc"); ctx.fillStyle = css("--bc"); ctx.lineWidth = 2;
+  const fixed = b.value === 0;
+  if (b.dof === 1){ // horizontal constraint -> triangle on the left
+    ctx.beginPath(); ctx.moveTo(sx-12, sy); ctx.lineTo(sx-24, sy-7); ctx.lineTo(sx-24, sy+7);
+    ctx.closePath(); fixed ? ctx.fill() : ctx.stroke();
+    if(!fixed) label("ux="+fmt(b.value), sx-26, sy+16, css("--bc"), true);
+  } else {          // vertical constraint -> triangle below
+    ctx.beginPath(); ctx.moveTo(sx, sy+12); ctx.lineTo(sx-7, sy+24); ctx.lineTo(sx+7, sy+24);
+    ctx.closePath(); fixed ? ctx.fill() : ctx.stroke();
+    if(!fixed) label("uy="+fmt(b.value), sx, sy+34, css("--bc"), true);
+  }
+}
+
+function drawGuide(g, sel){
+  const x1=w2sx(g.x), y1=w2sy(g.y), x2=w2sx(g.x2), y2=w2sy(g.y2);
+  ctx.strokeStyle = css("--guide"); ctx.lineWidth = sel ? 2.5 : 1.6;
+  ctx.setLineDash(sel ? [] : [6,4]);
+  ctx.beginPath();
+  if (g.type==="rect") ctx.rect(Math.min(x1,x2), Math.min(y1,y2), Math.abs(x2-x1), Math.abs(y2-y1));
+  else if (g.type==="line"){ ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); }
+  else if (g.type==="circle") ctx.arc(x1, y1, Math.hypot(x2-x1,y2-y1), 0, 7);
+  ctx.stroke(); ctx.setLineDash([]);
+}
+function hitGuide(sx, sy){
+  const tol = 6;
+  for (let i=guides.length-1; i>=0; i--){
+    const g = guides[i];
+    const x1=w2sx(g.x), y1=w2sy(g.y), x2=w2sx(g.x2), y2=w2sy(g.y2);
+    if (g.type==="line"){ if (distToSeg(sx,sy,x1,y1,x2,y2) <= tol) return g; }
+    else if (g.type==="circle"){ if (Math.abs(Math.hypot(sx-x1,sy-y1) - Math.hypot(x2-x1,y2-y1)) <= tol) return g; }
+    else {
+      const l=Math.min(x1,x2), r=Math.max(x1,x2), t=Math.min(y1,y2), b=Math.max(y1,y2);
+      if (distToSeg(sx,sy,l,t,r,t)<=tol || distToSeg(sx,sy,r,t,r,b)<=tol ||
+          distToSeg(sx,sy,r,b,l,b)<=tol || distToSeg(sx,sy,l,b,l,t)<=tol) return g;
+    }
+  }
+  return null;
+}
+
+// ---------- hit testing ----------
+function hitNode(sx, sy){
+  for (let i = nodes.length - 1; i >= 0; i--){
+    const n = nodes[i];
+    if (Math.hypot(w2sx(n.x) - sx, w2sy(n.y) - sy) <= 11) return n;
+  }
+  return null;
+}
+function hitElement(sx, sy){
+  for (let i = elements.length - 1; i >= 0; i--){
+    const e = elements[i], a = nodeByUid(e.a), b = nodeByUid(e.b);
+    if (!a || !b) continue;
+    const d = distToSeg(sx, sy, w2sx(a.x), w2sy(a.y), w2sx(b.x), w2sy(b.y));
+    if (d <= 6) return e;
+  }
+  return null;
+}
+// topmost draggable label / force under the cursor (from this frame's hitboxes)
+function hitLabel(sx, sy){
+  for (let i = labelHits.length - 1; i >= 0; i--){
+    const h = labelHits[i];
+    if (sx >= h.x && sx <= h.x + h.w && sy >= h.y && sy <= h.y + h.h) return h;
+  }
+  return null;
+}
+function distToSeg(px, py, x1, y1, x2, y2){
+  const dx = x2 - x1, dy = y2 - y1, l2 = dx*dx + dy*dy;
+  let t = l2 ? ((px-x1)*dx + (py-y1)*dy) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t*dx), py - (y1 + t*dy));
+}
+
+// ---------- mouse ----------
+let lastMouse = null, panning = false, spaceDown = false, panStart = null;
+function evPos(e){ const r = cv.getBoundingClientRect(); return {x: e.clientX - r.left, y: e.clientY - r.top}; }
+
+cv.addEventListener("mousedown", e => {
+  const p = evPos(e);
+  if (e.button === 1 || (e.button === 0 && spaceDown)){
+    panning = true; panStart = {x:p.x, y:p.y, ox, oy}; e.preventDefault(); return;
+  }
+  if (e.button !== 0) return;
+
+  if (tool === "node"){
+    pushHistory();
+    const n = {uid: uid(), x: snap(s2wx(p.x)), y: snap(s2wy(p.y))};
+    nodes.push(n); selection = {type:"node", uid:n.uid}; renderInspector(); draw();
+    setTimeout(() => { const el = document.getElementById("nx"); if (el){ el.focus(); el.select(); } }, 0);
+    return;
+  }
+  if (tool === "element"){
+    const n = hitNode(p.x, p.y);
+    if (!n){ pendingNode = null; draw(); return; }
+    if (pendingNode == null){ pendingNode = n.uid; setStatus("First node <b>"+nodeHTML(n.uid)+"</b> — click a second node."); draw(); return; }
+    if (pendingNode === n.uid){ pendingNode = null; draw(); return; }
+    const a = pendingNode, b = n.uid;
+    const dup = elements.some(el => (el.a===a&&el.b===b)||(el.a===b&&el.b===a));
+    if (!dup){
+      pushHistory();
+      const el = {uid: uid(), a, b, E:1, A:1};
+      elements.push(el); selection = {type:"element", uid:el.uid}; renderInspector();
+    }
+    pendingNode = null; draw(); return;
+  }
+  if (tool === "ref"){
+    dragStart = {sx:p.x, sy:p.y};
+    const wx = snap(s2wx(p.x)), wy = snap(s2wy(p.y));
+    guideDraft = {uid: uid(), type: refShape, x:wx, y:wy, x2:wx, y2:wy};
+    return;
+  }
+  if (tool === "lasso"){
+    clearMulti(); selection = null; renderInspector();
+    dragStart = {sx:p.x, sy:p.y};
+    lassoRect = {x0:p.x, y0:p.y, x1:p.x, y1:p.y};
+    return;
+  }
+  // select tool — a label / force under the cursor starts a purely-visual drag
+  const hl = hitLabel(p.x, p.y);
+  if (hl){
+    draggingLabel = {obj:hl.obj, sx:p.x, sy:p.y, lx:hl.obj.lx || 0, ly:hl.obj.ly || 0};
+    cv.style.cursor = "grabbing";
+    return;
+  }
+  clearMulti();
+  const n = hitNode(p.x, p.y);
+  if (n){ selection = {type:"node", uid:n.uid}; renderInspector(); draw(); return; }
+  const el = hitElement(p.x, p.y);
+  if (el){ selection = {type:"element", uid:el.uid}; renderInspector(); draw(); return; }
+  selection = null; renderInspector(); draw();
+});
+
+window.addEventListener("mousemove", e => {
+  const p = evPos(e); lastMouse = p;
+  if (panning && panStart){ ox = panStart.ox + (p.x - panStart.x); oy = panStart.oy + (p.y - panStart.y); draw(); }
+  else if (draggingLabel){
+    const d = draggingLabel;
+    d.obj.lx = d.lx + (p.x - d.sx);
+    d.obj.ly = d.ly + (p.y - d.sy);
+    draw();
+  }
+  else if (lassoRect){ lassoRect.x1 = p.x; lassoRect.y1 = p.y; draw(); }
+  else if (guideDraft){
+    guideDraft.x2 = snap(s2wx(p.x)); guideDraft.y2 = snap(s2wy(p.y));
+    const dw = Math.abs(guideDraft.x2-guideDraft.x), dh = Math.abs(guideDraft.y2-guideDraft.y);
+    const r = Math.hypot(guideDraft.x2-guideDraft.x, guideDraft.y2-guideDraft.y);
+    setStatus(guideDraft.type==="circle" ? `ref circle — radius <b>${fmt(r)}</b>`
+            : guideDraft.type==="line" ? `ref line — length <b>${fmt(r)}</b>`
+            : `ref box — <b>${fmt(dw)}</b> × <b>${fmt(dh)}</b>`);
+    draw();
+  }
+  else {
+    setStatus(`x = <b>${fmt(snap(s2wx(p.x)))}</b> &nbsp; y = <b>${fmt(snap(s2wy(p.y)))}</b> &nbsp; · ${nodes.length} nodes, ${elements.length} elements`);
+    if (tool === "element" && pendingNode != null) draw();
+  }
+});
+window.addEventListener("mouseup", e => {
+  panning = false; panStart = null;
+  if (draggingLabel){ draggingLabel = null; cv.style.cursor = spaceDown ? "grab" : "crosshair"; draw(); return; }
+  if (lassoRect){
+    const p = evPos(e);
+    // world-space bounds of the lasso box
+    const ax = s2wx(lassoRect.x0), ay = s2wy(lassoRect.y0), bx = s2wx(lassoRect.x1), by = s2wy(lassoRect.y1);
+    const xmin = Math.min(ax,bx), xmax = Math.max(ax,bx), ymin = Math.min(ay,by), ymax = Math.max(ay,by);
+    clearMulti();
+    for (const n of nodes) if (n.x>=xmin && n.x<=xmax && n.y>=ymin && n.y<=ymax) multi.nodes.add(n.uid);
+    // an element is selected when both its endpoints fall inside the box
+    for (const el of elements) if (multi.nodes.has(el.a) && multi.nodes.has(el.b)) multi.elements.add(el.uid);
+    lassoRect = null; dragStart = null; selection = null; renderInspector(); draw();
+    return;
+  }
+  if (guideDraft){
+    const p = evPos(e);
+    const moved = dragStart ? Math.hypot(p.x - dragStart.sx, p.y - dragStart.sy) : 0;
+    if (moved >= 5){
+      pushHistory();
+      guides.push(guideDraft);
+      selection = {type:"guide", uid:guideDraft.uid};
+    } else {
+      const g = hitGuide(p.x, p.y);        // a click (no drag) selects an existing guide
+      selection = g ? {type:"guide", uid:g.uid} : null;
+    }
+    guideDraft = null; dragStart = null; renderInspector(); draw();
+  }
+});
+
+// double-click a dragged label / force to snap it back to its default spot
+cv.addEventListener("dblclick", e => {
+  if (tool !== "select") return;
+  const p = evPos(e);
+  const hl = hitLabel(p.x, p.y);
+  if (hl){ hl.obj.lx = 0; hl.obj.ly = 0; draw(); }
+});
+
+// zoom & pan so every node (and reference guide) fits on screen
+function fitView(){
+  const pts = [];
+  for (const n of nodes) pts.push([n.x, n.y]);
+  for (const g of guides){
+    pts.push([g.x, g.y]);
+    if (g.type === "circle"){ const r = Math.hypot(g.x2-g.x, g.y2-g.y); pts.push([g.x-r, g.y-r], [g.x+r, g.y+r]); }
+    else pts.push([g.x2, g.y2]);
+  }
+  if (!pts.length) return;
+  let minx=Infinity, maxx=-Infinity, miny=Infinity, maxy=-Infinity;
+  for (const [x,y] of pts){ minx=Math.min(minx,x); maxx=Math.max(maxx,x); miny=Math.min(miny,y); maxy=Math.max(maxy,y); }
+  const W = cv.clientWidth, H = cv.clientHeight, pad = 70;
+  const spanx = Math.max(maxx-minx, 1e-6), spany = Math.max(maxy-miny, 1e-6);
+  scale = Math.max(8, Math.min(600, Math.min((W-2*pad)/spanx, (H-2*pad)/spany)));
+  const cxw = (minx+maxx)/2, cyw = (miny+maxy)/2;
+  ox = W/2 - cxw*scale; oy = H/2 + cyw*scale;
+  draw();
+}
+
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  const p = evPos(e);
+  const wx = s2wx(p.x), wy = s2wy(p.y);
+  const f = e.deltaY < 0 ? 1.12 : 1/1.12;
+  scale = Math.max(8, Math.min(600, scale * f));
+  ox = p.x - wx * scale; oy = p.y + wy * scale;
+  draw();
+}, {passive:false});
+
+// ---------- keyboard ----------
+window.addEventListener("keydown", e => {
+  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")){
+    if (!typing){ e.preventDefault(); undo(); }   // in a field, let the browser undo text
+    return;
+  }
+  if (e.code === "Space" && !typing){ spaceDown = true; cv.style.cursor = "grab"; }
+  if (typing) return;
+  if (e.key === "v" || e.key === "V") setTool("select");
+  if (e.key === "n" || e.key === "N") setTool("node");
+  if (e.key === "e" || e.key === "E") setTool("element");
+  if (e.key === "r" || e.key === "R") setTool("ref");
+  if (e.key === "l" || e.key === "L") setTool("lasso");
+  if (e.key === "f" || e.key === "F") fitView();
+  if (e.key === "Escape"){ pendingNode = null; guideDraft = null; lassoRect = null; selection = null; clearMulti(); renderInspector(); draw(); }
+  if (e.key === "Delete" || e.key === "Backspace"){ deleteSelection(); }
+});
+window.addEventListener("keyup", e => { if (e.code === "Space"){ spaceDown = false; cv.style.cursor = "crosshair"; } });
+
+// ---------- tools ----------
+function setTool(t){
+  tool = t; pendingNode = null; guideDraft = null; lassoRect = null; clearMulti();
+  document.querySelectorAll(".tool").forEach(el => el.classList.toggle("active", el.dataset.tool === t));
+  document.getElementById("refShapes").hidden = (t !== "ref");
+  renderInspector(); draw();
+}
+document.getElementById("undoBtn").addEventListener("click", undo);
+document.getElementById("toolbar").addEventListener("click", e => {
+  const t = e.target.closest(".tool"); if (t) setTool(t.dataset.tool);
+});
+document.getElementById("refShapes").addEventListener("click", e => {
+  const b = e.target.closest(".shape"); if (!b) return;
+  refShape = b.dataset.shape;
+  document.querySelectorAll("#refShapes .shape").forEach(el => el.classList.toggle("active", el === b));
+});
+
+// ---------- deletion ----------
+function removeNode(u){   // node + everything attached to it
+  for (let i = elements.length-1; i>=0; i--) if (elements[i].a===u||elements[i].b===u) elements.splice(i,1);
+  for (let i = loads.length-1; i>=0; i--) if (loads[i].node===u) loads.splice(i,1);
+  for (let i = bounds.length-1; i>=0; i--) if (bounds[i].node===u) bounds.splice(i,1);
+  const idx = nodeIndex(u); if (idx>=0) nodes.splice(idx,1);
+}
+function deleteMulti(){
+  if (!multi.nodes.size && !multi.elements.size) return;
+  pushHistory();
+  for (let i = elements.length-1; i>=0; i--) if (multi.elements.has(elements[i].uid)) elements.splice(i,1);
+  for (const u of multi.nodes) removeNode(u);
+  clearMulti(); selection = null; renderInspector(); draw();
+}
+function deleteSelection(){
+  if (multi.nodes.size || multi.elements.size){ deleteMulti(); return; }
+  if (!selection) return;
+  pushHistory();
+  if (selection.type === "guide"){
+    const i = guides.findIndex(g => g.uid === selection.uid);
+    if (i>=0) guides.splice(i,1);
+  } else if (selection.type === "node"){
+    removeNode(selection.uid);
+  } else {
+    const idx = elements.findIndex(e => e.uid === selection.uid);
+    if (idx>=0) elements.splice(idx,1);
+  }
+  selection = null; renderInspector(); draw();
+}
+
+// ---------- inspector ----------
+const inspBody = () => document.getElementById("inspBody") || (()=>{const d=document.createElement("div");d.id="inspBody";document.getElementById("inspector").appendChild(d);return d;})();
+function renderInspector(){
+  const host = document.getElementById("inspector");
+  host.innerHTML = '<h2>Inspector</h2>';
+  const body = document.createElement("div"); body.id = "inspBody"; host.appendChild(body);
+  if (multi.nodes.size || multi.elements.size){
+    body.className = "";
+    body.innerHTML = `
+      <div class="grp">
+        <div class="title">Lasso selection</div>
+        <div class="metric"><b>${multi.nodes.size}</b> node(s) · <b>${multi.elements.size}</b> element(s)</div>
+        <div class="metric">Deleting a node also removes its elements, loads and BCs.</div>
+      </div>
+      <button class="ghostdanger" id="delMulti">Delete selected</button>`;
+    document.getElementById("delMulti").addEventListener("click", deleteMulti);
+    return;
+  }
+  if (!selection){ body.className = "empty";
+    body.innerHTML = "Nothing selected.<br><br>Use <b>NODE</b> to place nodes,<br><b>ELEM</b> to connect two nodes,<br><b>REF</b> to trace reference geometry,<br><b>LASSO</b> to box-select,<br><b>SEL</b> to edit them.";
+    return; }
+  body.className = "";
+  if (selection.type === "node") renderNodeInspector(body);
+  else if (selection.type === "element") renderElementInspector(body);
+  else renderGuideInspector(body);
+}
+
+function renderGuideInspector(body){
+  const g = guides.find(x => x.uid === selection.uid);
+  const dw = Math.abs(g.x2-g.x), dh = Math.abs(g.y2-g.y), r = Math.hypot(g.x2-g.x, g.y2-g.y);
+  const note = `<div class="metric" style="margin-bottom:12px">Visual guide only — never appears in the exported .m file, and Select ignores it.</div>
+    <button class="ghostdanger" id="delGuide">Delete geometry</button>`;
+  const setDel = () => document.getElementById("delGuide").addEventListener("click", deleteSelection);
+
+  if (g.type === "circle"){
+    body.innerHTML = `
+      <div class="grp">
+        <div class="title">Reference <span class="tag">circle</span></div>
+        <div class="row"><label>center x</label><input id="gcx" type="number" step="0.1" value="${g.x}"></div>
+        <div class="row"><label>center y</label><input id="gcy" type="number" step="0.1" value="${g.y}"></div>
+        <div class="row"><label>radius</label><input id="gr" type="number" step="0.1" min="0" value="${fmt(r)}"></div>
+      </div>${note}`;
+    // moving the center shifts the edge point so the radius is preserved
+    document.getElementById("gcx").addEventListener("input", ev => { const v=parseFloat(ev.target.value)||0; g.x2 += v - g.x; g.x = v; draw(); });
+    document.getElementById("gcy").addEventListener("input", ev => { const v=parseFloat(ev.target.value)||0; g.y2 += v - g.y; g.y = v; draw(); });
+    document.getElementById("gr").addEventListener("input", ev => { const v=Math.max(0, parseFloat(ev.target.value)||0); g.x2 = g.x + v; g.y2 = g.y; draw(); });
+    setDel(); return;
+  }
+
+  const meta = g.type==="line" ? `length <b>${fmt(r)}</b>` : `size <b>${fmt(dw)}</b> × <b>${fmt(dh)}</b>`;
+  body.innerHTML = `
+    <div class="grp">
+      <div class="title">Reference <span class="tag">${g.type}</span></div>
+      <div class="metric">${meta}</div>
+      <div class="row"><label>x1</label><input id="gx" type="number" step="0.1" value="${g.x}"></div>
+      <div class="row"><label>y1</label><input id="gy" type="number" step="0.1" value="${g.y}"></div>
+      <div class="row"><label>x2</label><input id="gx2" type="number" step="0.1" value="${g.x2}"></div>
+      <div class="row"><label>y2</label><input id="gy2" type="number" step="0.1" value="${g.y2}"></div>
+    </div>${note}`;
+  const bind = (id,key) => document.getElementById(id).addEventListener("input", ev => { g[key] = parseFloat(ev.target.value)||0; draw(); });
+  bind("gx","x"); bind("gy","y"); bind("gx2","x2"); bind("gy2","y2");
+  setDel();
+}
+
+function renderNodeInspector(body){
+  const n = nodeByUid(selection.uid);
+  const lx = loads.find(l => l.node===n.uid && l.dof===1);
+  const ly = loads.find(l => l.node===n.uid && l.dof===2);
+  const bx = bounds.find(b => b.node===n.uid && b.dof===1);
+  const by = bounds.find(b => b.node===n.uid && b.dof===2);
+  body.innerHTML = `
+    <div class="grp">
+      <div class="title">Node <span class="tag">${nodeHTML(n.uid)}</span></div>
+      <div class="row"><label>x</label><input id="nx" type="number" step="0.1" value="${n.x}"></div>
+      <div class="row"><label>y</label><input id="ny" type="number" step="0.1" value="${n.y}"></div>
+    </div>
+    <div class="grp">
+      <div class="title">Loads</div>
+      <div class="row"><label>Fx</label><input id="fx" type="number" step="0.1" value="${lx?lx.value:''}" placeholder="0"></div>
+      <div class="row"><label>Fy</label><input id="fy" type="number" step="0.1" value="${ly?ly.value:''}" placeholder="0"></div>
+    </div>
+    <div class="grp">
+      <div class="title">Boundary conditions</div>
+      <div class="constraint"><input id="cx" type="checkbox" ${bx?'checked':''}><span class="dim">ux</span>
+        <input id="cxv" class="cval" type="number" step="0.1" value="${bx?bx.value:0}" ${bx?'':'disabled'} placeholder="0"></div>
+      <div class="constraint"><input id="cy" type="checkbox" ${by?'checked':''}><span class="dim">uy</span>
+        <input id="cyv" class="cval" type="number" step="0.1" value="${by?by.value:0}" ${by?'':'disabled'} placeholder="0"></div>
+      <div class="metric" style="margin-top:4px">Check = constrained. Value 0 = locked; a value = prescribed displacement.</div>
+    </div>
+    <button class="ghostdanger" id="delNode">Delete node</button>`;
+
+  const upd = () => draw();
+  document.getElementById("nx").addEventListener("input", e => { n.x = parseFloat(e.target.value)||0; upd(); });
+  document.getElementById("ny").addEventListener("input", e => { n.y = parseFloat(e.target.value)||0; upd(); });
+  bindLoad("fx", n.uid, 1); bindLoad("fy", n.uid, 2);
+  bindBC("cx","cxv", n.uid, 1); bindBC("cy","cyv", n.uid, 2);
+  document.getElementById("delNode").addEventListener("click", deleteSelection);
+}
+
+function bindLoad(id, nodeUid, dof){
+  document.getElementById(id).addEventListener("input", e => {
+    const v = parseFloat(e.target.value);
+    const i = loads.findIndex(l => l.node===nodeUid && l.dof===dof);
+    if (isNaN(v) || v === 0){ if (i>=0) loads.splice(i,1); }
+    else if (i>=0) loads[i].value = v; else loads.push({node:nodeUid, dof, value:v});
+    draw();
+  });
+}
+function bindBC(chkId, valId, nodeUid, dof){
+  const chk = document.getElementById(chkId), val = document.getElementById(valId);
+  const sync = () => {
+    const i = bounds.findIndex(b => b.node===nodeUid && b.dof===dof);
+    if (chk.checked){ val.disabled = false;
+      const v = parseFloat(val.value)||0;
+      if (i>=0) bounds[i].value = v; else bounds.push({node:nodeUid, dof, value:v});
+    } else { val.disabled = true; if (i>=0) bounds.splice(i,1); }
+    draw();
+  };
+  chk.addEventListener("change", sync);
+  val.addEventListener("input", sync);
+}
+
+function renderElementInspector(body){
+  const e = elements.find(x => x.uid === selection.uid);
+  const a = nodeByUid(e.a), b = nodeByUid(e.b);
+  body.innerHTML = `
+    <div class="grp">
+      <div class="title">Element <span class="tag">${elemHTML(e)}</span></div>
+      <div class="metric">Connects <b>${nodeHTML(e.a)}</b> → <b>${nodeHTML(e.b)}</b></div>
+      <div class="metric">Length <b>${fmt(elemLength(e))}</b> units</div>
+      <div class="metric">From (${fmt(a.x)}, ${fmt(a.y)}) to (${fmt(b.x)}, ${fmt(b.y)})</div>
+    </div>
+    <div class="grp">
+      <div class="title">Section properties</div>
+      <div class="row"><label>E modulus</label><input id="pE" type="number" step="0.1" value="${e.E}"></div>
+      <div class="row"><label>Area A</label><input id="pA" type="number" step="0.1" value="${e.A}"></div>
+      <div class="metric">Distinct (E, A) pairs become rows of <b>mprop</b>.</div>
+    </div>
+    <button class="ghostdanger" id="delElem">Delete element</button>`;
+  document.getElementById("pE").addEventListener("input", ev => { e.E = parseFloat(ev.target.value)||0; });
+  document.getElementById("pA").addEventListener("input", ev => { e.A = parseFloat(ev.target.value)||0; });
+  document.getElementById("delElem").addEventListener("click", deleteSelection);
+}
+
+// ---------- FEA solver (ported from src/fea.py) ----------
+function zeros(n){ return new Array(n).fill(0); }
+function elemGeom(e){
+  const a = nodeByUid(e.a), b = nodeByUid(e.b);
+  const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy);
+  return {a, b, dx, dy, L};
+}
+// Solve K u = P by Gaussian elimination with partial pivoting. Returns null if singular.
+function linSolve(Ain, bin){
+  const n = bin.length;
+  const A = Ain.map(r => r.slice()), b = bin.slice();
+  for (let c = 0; c < n; c++){
+    let piv = c;
+    for (let r = c+1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    if (Math.abs(A[piv][c]) < 1e-12) return null;   // singular
+    if (piv !== c){ [A[piv], A[c]] = [A[c], A[piv]]; [b[piv], b[c]] = [b[c], b[piv]]; }
+    for (let r = c+1; r < n; r++){
+      const f = A[r][c] / A[c][c];
+      if (f === 0) continue;
+      for (let k = c; k < n; k++) A[r][k] -= f * A[c][k];
+      b[r] -= f * b[c];
+    }
+  }
+  const x = zeros(n);
+  for (let r = n-1; r >= 0; r--){
+    let s = b[r];
+    for (let k = r+1; k < n; k++) s -= A[r][k] * x[k];
+    x[r] = s / A[r][r];
+  }
+  return x;
+}
+function solveFEA(){
+  const nn = nodes.length, ndof = 2*nn;
+  if (nn < 2 || elements.length === 0) return {error:"Need at least 2 nodes and 1 element."};
+  if (bounds.length === 0) return {error:"No boundary conditions — the stiffness matrix is singular."};
+  // degenerate (zero-length) elements?
+  for (const e of elements){ const g = elemGeom(e); if (g.L < 1e-9) return {error:"Element "+elemName(e)+" has zero length."}; }
+
+  // Global stiffness K and per-element stiffness ke (ke = A E L0 * B0 B0^T, B0 = (1/L0^2)[-dx,-dy,dx,dy])
+  const K = Array.from({length:ndof}, () => zeros(ndof));
+  const kes = [];
+  for (const e of elements){
+    const {dx, dy, L} = elemGeom(e);
+    const ia = nodeIndex(e.a), ib = nodeIndex(e.b);
+    const B0 = [-dx/(L*L), -dy/(L*L), dx/(L*L), dy/(L*L)];
+    const coef = e.A * e.E * L;
+    const ke = Array.from({length:4}, () => zeros(4));
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) ke[i][j] = coef * B0[i] * B0[j];
+    const edof = [2*ia, 2*ia+1, 2*ib, 2*ib+1];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) K[edof[i]][edof[j]] += ke[i][j];
+    kes.push({name:elemHTML(e), ke, edof, L, E:e.E, A:e.A, n1:nodeHTML(e.a), n2:nodeHTML(e.b)});
+  }
+  const Kglobal = K.map(r => r.slice());   // keep a pristine copy for display
+
+  // Load vector
+  const P = zeros(ndof);
+  for (const l of loads){ P[2*nodeIndex(l.node) + (l.dof-1)] += l.value; }
+
+  // Enforce prescribed displacements (mirrors fea.py enforce: read column, adjust P, then zero row/col)
+  const fixedDofs = [];
+  for (const bc of bounds){
+    const n = 2*nodeIndex(bc.node) + (bc.dof-1);
+    const col = K.map(r => r[n]);   // current column n
+    P[n] = bc.value;
+    col[n] = 0;
+    for (let r = 0; r < ndof; r++) P[r] -= bc.value * col[r];
+    fixedDofs.push(n);
+  }
+  for (const n of fixedDofs){
+    for (let r = 0; r < ndof; r++){ K[n][r] = 0; K[r][n] = 0; }
+    K[n][n] = 1;
+  }
+
+  const D = linSolve(K, P);
+  if (!D) return {error:"Singular stiffness matrix — the structure is a mechanism (add/adjust supports)."};
+
+  // Recover element strain/stress and classify
+  const TOL = 1e-9;
+  const elems = kes.map(k => {
+    const e = elements[kes.indexOf(k)];
+    const {dx, dy, L} = elemGeom(e);
+    const B0 = [-dx/(L*L), -dy/(L*L), dx/(L*L), dy/(L*L)];
+    const d = k.edof.map(g => D[g]);
+    const stress = e.E * (B0[0]*d[0] + B0[1]*d[1] + B0[2]*d[2] + B0[3]*d[3]);
+    const strain = stress / e.E;
+    const state = stress < -TOL ? "Compression" : stress > TOL ? "Tension" : "Non-loaded";
+    return {name:k.name, n1:k.n1, n2:k.n2, L, strain, stress, state};
+  });
+
+  // Per-node displacements, in current node order
+  const order = nodes.map(n => ({name:nodeHTML(n.uid), uid:n.uid, x:n.x, y:n.y,
+                                 ux:D[2*nodeIndex(n.uid)], uy:D[2*nodeIndex(n.uid)+1]}));
+  return {nn, ndof, K:Kglobal, kes, P, D, elems, order};
+}
+
+function stressColor(state){
+  return state === "Compression" ? css("--load") : state === "Tension" ? css("--accent") : css("--bc");
+}
+function autoScale(){
+  if (!results) return;
+  let maxD = 0; for (const v of results.D) maxD = Math.max(maxD, Math.abs(v));
+  if (maxD < 1e-12) { dispScale = 1; }
+  else {
+    // aim for the largest displacement to read as ~10% of the model's extent
+    let span = 1, xs = nodes.map(n=>n.x), ys = nodes.map(n=>n.y);
+    if (xs.length) span = Math.max(Math.max(...xs)-Math.min(...xs), Math.max(...ys)-Math.min(...ys), 1e-6);
+    dispScale = Math.max(0, Math.round((0.12*span/maxD)*100)/100);
+  }
+  document.getElementById("dscale").value = dispScale;
+  draw();
+}
+function drawResults(){
+  const s = dispScale;
+  const defPos = uid => { const o = results.order.find(r => r.uid===uid); return {x:o.x + s*o.ux, y:o.y + s*o.uy}; };
+  // (undeformed geometry is drawn faded by drawElement/drawNode)
+  // deformed elements, coloured by axial stress state
+  for (let i = 0; i < elements.length; i++){
+    const e = elements[i], pa = defPos(e.a), pb = defPos(e.b);
+    ctx.strokeStyle = stressColor(results.elems[i].state); ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(w2sx(pa.x), w2sy(pa.y)); ctx.lineTo(w2sx(pb.x), w2sy(pb.y)); ctx.stroke();
+  }
+  // deformed node markers
+  ctx.fillStyle = css("--ink");
+  for (const o of results.order){ const p = defPos(o.uid);
+    ctx.beginPath(); ctx.arc(w2sx(p.x), w2sy(p.y), 3.5, 0, 7); ctx.fill(); }
+}
+
+// number formatting for tables
+function nf(v){
+  if (!isFinite(v)) return "—";
+  if (Math.abs(v) < 1e-12) return "0";
+  const a = Math.abs(v);
+  if (a >= 1e5 || a < 1e-4) return v.toExponential(3);
+  return String(Number(v.toPrecision(5)));
+}
+function matTable(M, rowLabels, colLabels){
+  let h = '<table class="mat"><tr><th></th>';
+  for (const c of colLabels) h += '<th>'+c+'</th>';
+  h += '</tr>';
+  for (let i = 0; i < M.length; i++){
+    h += '<tr><th>'+rowLabels[i]+'</th>';
+    for (let j = 0; j < M[i].length; j++) h += '<td>'+nf(M[i][j])+'</td>';
+    h += '</tr>';
+  }
+  return h + '</table>';
+}
+function dofLabels(ndof){
+  const L = [];
+  for (let k = 0; k < ndof/2; k++){ L.push("n<sub>"+(k+1)+"</sub> x", "n<sub>"+(k+1)+"</sub> y"); }
+  return L;
+}
+let resultsMode = "modal";   // "modal" | "side" | "bottom"
+function resultsSummary(){ const r = results; return r.nn+" nodes · "+r.ndof+" DOF · "+r.elems.length+" elements"; }
+function resultsContentHTML(){
+  const r = results;
+  let disp = '<table class="data"><tr><th>node</th><th>u_x</th><th>u_y</th></tr>';
+  for (const o of r.order) disp += `<tr><td>${o.name}</td><td>${nf(o.ux)}</td><td>${nf(o.uy)}</td></tr>`;
+  disp += '</table>';
+  let el = '<table class="data"><tr><th>elem</th><th>nodes</th><th>length</th><th>strain</th><th>stress</th><th>state</th></tr>';
+  for (const e of r.elems){
+    const cls = e.state==="Compression"?"comp":e.state==="Tension"?"tens":"none";
+    el += `<tr><td>${e.name}</td><td>${e.n1}–${e.n2}</td><td>${nf(e.L)}</td><td>${nf(e.strain)}</td><td>${nf(e.stress)}</td><td><span class="pill ${cls}">${e.state}</span></td></tr>`;
+  }
+  el += '</table>';
+  let kes = '';
+  for (const k of r.kes){
+    const labs = [k.n1+" x", k.n1+" y", k.n2+" x", k.n2+" y"];
+    kes += `<details><summary>${k.name} &nbsp; (${k.n1}–${k.n2}, E=${nf(k.E)}, A=${nf(k.A)}, L=${nf(k.L)})</summary><div class="dtl-inner">${matTable(k.ke, labs, labs)}</div></details>`;
+  }
+  const dl = dofLabels(r.ndof);
+  return `<details open><summary>Nodal displacements</summary><div class="dtl-inner">${disp}</div></details>`
+    + `<details open><summary>Element strain / stress &amp; state</summary><div class="dtl-inner">${el}</div></details>`
+    + `<details><summary>Global stiffness matrix K (${r.ndof}×${r.ndof})</summary><div class="dtl-inner">${matTable(r.K, dl, dl)}</div></details>`
+    + `<details><summary>Element stiffness matrices (${r.kes.length})</summary><div class="dtl-inner">${kes}</div></details>`;
+}
+function openResults(mode){
+  if (!results) return;
+  resultsMode = mode;
+  const content = resultsContentHTML(), summary = resultsSummary();
+  const dock = document.getElementById("resDock"), modal = document.getElementById("resModalBg");
+  if (mode === "modal"){
+    modal.classList.add("show");
+    dock.hidden = true;
+    document.getElementById("resSummary").textContent = summary;
+    document.getElementById("resBody").innerHTML = content;
+  } else {
+    modal.classList.remove("show");
+    dock.className = mode;                                  // "side" | "bottom"
+    (mode === "side" ? document.getElementById("mainRow") : document.body).appendChild(dock);
+    dock.hidden = false;
+    document.getElementById("rdSummary").textContent = summary;
+    document.getElementById("rdBody").innerHTML = content;
+  }
+  requestAnimationFrame(resize);                            // canvas area changed size
+}
+function closeResults(){
+  document.getElementById("resModalBg").classList.remove("show");
+  document.getElementById("resDock").hidden = true;
+  requestAnimationFrame(resize);
+}
+function refreshResultsUI(){
+  const on = !!results;
+  document.getElementById("dscaleWrap").hidden = !on;
+  document.getElementById("resultsBtn").hidden = !on;
+  document.getElementById("reslegend").hidden = !on;
+  if (!on) closeResults();
+}
+function invalidateResults(){ if (results){ results = null; refreshResultsUI(); } }
+function runSolve(){
+  const res = solveFEA();
+  if (res.error){ results = null; refreshResultsUI(); draw(); alert("Cannot solve:\n\n" + res.error); return; }
+  results = res;
+  refreshResultsUI();
+  openResults(resultsMode);
+  draw();
+}
+document.getElementById("solveBtn").addEventListener("click", runSolve);
+document.getElementById("resultsBtn").addEventListener("click", () => openResults(resultsMode));
+document.getElementById("closeRes").addEventListener("click", closeResults);
+document.getElementById("rdClose").addEventListener("click", closeResults);
+document.getElementById("resModalBg").addEventListener("click", e => { if (e.target.id === "resModalBg") closeResults(); });
+document.querySelectorAll("[data-mode]").forEach(btn => btn.addEventListener("click", () => openResults(btn.dataset.mode)));
+document.getElementById("dscale").addEventListener("input", e => { dispScale = parseFloat(e.target.value)||0; draw(); });
+document.getElementById("autoScaleBtn").addEventListener("click", autoScale);
+
+// ---------- export ----------
+function buildMprop(){
+  const rows = []; const key = e => fmt(e.E) + "|" + fmt(e.A);
+  const map = new Map();
+  for (const e of elements){
+    const k = key(e);
+    if (!map.has(k)){ map.set(k, rows.length + 1); rows.push([e.E, e.A]); }
+  }
+  return { rows, matId: e => map.get(key(e)) };
+}
+function exportM(){
+  const fname = document.getElementById("fname").value.trim() || "mesh.m";
+  const plotdof = Math.max(1, parseInt(document.getElementById("plotdof").value) || 1);
+  const { rows: mrows, matId } = buildMprop();
+  const T = "\t";
+  let s = "";
+  s += "% Created with:       FEM Builder (FlExtract-style)\n";
+  s += "% Element type:       truss\n";
+  s += "% Number of nodes:    " + nodes.length + "\n";
+  s += "% Number of elements: " + elements.length + "\n\n";
+  s += "clear all;\n\n";
+  s += "% Node coordinates: x, y\nX = [\n";
+  for (const n of nodes) s += fmt(n.x) + T + fmt(n.y) + "\n";
+  s += "];\n";
+  s += "% Element connectivity: node1_id, node2_id, material_id\nIX = [\n";
+  for (const e of elements) s += (nodeIndex(e.a)+1) + T + (nodeIndex(e.b)+1) + T + matId(e) + "\n";
+  s += "];\n";
+  s += "% Element properties: Young's modulus, area\nmprop = [\n";
+  for (const r of (mrows.length ? mrows : [[1,1]])) s += fmt(r[0]) + T + fmt(r[1]) + "\n";
+  s += "];\n";
+  s += "% Nodal diplacements: node_id, degree of freedom (1 - x, 2 - y), displacement\nbound = [\n";
+  for (const b of bounds) s += (nodeIndex(b.node)+1) + T + b.dof + T + fmt(b.value) + "\n";
+  s += "];\n";
+  s += "% Nodal loads: node_id, degree of freedom (1 - x, 2 - y), load\nloads = [\n";
+  for (const l of loads) s += (nodeIndex(l.node)+1) + T + l.dof + T + fmt(l.value) + "\n";
+  s += "];\n";
+  s += "% Control parameters\nplotdof = " + plotdof + ";\n";
+
+  // warnings for the FEM solver
+  const warns = [];
+  if (nodes.length === 0) warns.push("No nodes defined.");
+  if (elements.length === 0) warns.push("No elements defined.");
+  if (bounds.length === 0) warns.push("No boundary conditions — the stiffness matrix will be singular.");
+  if (loads.length === 0) warns.push("No loads applied.");
+  if (plotdof > nodes.length*2) warns.push("plotdof exceeds number of DOFs ("+nodes.length*2+").");
+
+  document.getElementById("expName").textContent = fname;
+  document.getElementById("expCounts").textContent = nodes.length + " nodes · " + elements.length + " elements";
+  document.getElementById("expText").value = s;
+  document.getElementById("expWarn").innerHTML = warns.length ? "⚠ " + warns.join("  ") : "";
+  document.getElementById("modalBg").classList.add("show");
+}
+document.getElementById("exportBtn").addEventListener("click", exportM);
+document.getElementById("closeModal").addEventListener("click", () => document.getElementById("modalBg").classList.remove("show"));
+document.getElementById("modalBg").addEventListener("click", e => { if (e.target.id === "modalBg") e.currentTarget.classList.remove("show"); });
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  const t = document.getElementById("expText");
+  try { await navigator.clipboard.writeText(t.value); document.getElementById("copyBtn").textContent = "Copied!"; setTimeout(()=>document.getElementById("copyBtn").textContent="Copy",1200); }
+  catch { t.select(); document.execCommand("copy"); }
+});
+document.getElementById("dlBtn").addEventListener("click", () => {
+  let fname = document.getElementById("fname").value.trim() || "mesh.m";
+  if (!fname.endsWith(".m")) fname += ".m";
+  const blob = new Blob([document.getElementById("expText").value], {type:"text/plain"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = fname; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+// ---------- misc ----------
+document.getElementById("clearBtn").addEventListener("click", () => {
+  if (!confirm("Clear all nodes, elements, loads, BCs and reference geometry?")) return;
+  pushHistory();
+  nodes.length=0; elements.length=0; loads.length=0; bounds.length=0; guides.length=0;
+  selection=null; pendingNode=null; guideDraft=null; lassoRect=null; clearMulti(); renderInspector(); draw();
+});
+document.getElementById("grid").addEventListener("input", draw);
+// snapshot the state once when the user starts editing any inspector field, so a
+// whole edit of that field is a single undo step
+document.getElementById("inspector").addEventListener("focusin", e => {
+  if (/INPUT|SELECT/.test(e.target.tagName)) pushHistory();
+});
+
+// ---------- fit view ----------
+document.getElementById("fitBtn").addEventListener("click", fitView);
+
+// ---------- settings (label size, label dragging) ----------
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsPanel = document.getElementById("settingsPanel");
+const lblSize = document.getElementById("lblSize");
+const lblSizeVal = document.getElementById("lblSizeVal");
+function applyLabelSize(px){
+  LBL.base = px;
+  LBL.sub = Math.max(7, Math.round(px * 0.71));
+  lblSize.value = px; lblSizeVal.textContent = px;
+  try { localStorage.setItem("fembuilder-lblsize", px); } catch(e){}
+  draw();
+}
+lblSize.addEventListener("input", () => applyLabelSize(parseInt(lblSize.value) || 14));
+settingsBtn.addEventListener("click", e => { e.stopPropagation(); settingsPanel.hidden = !settingsPanel.hidden; });
+document.addEventListener("mousedown", e => {
+  if (!settingsPanel.hidden && !settingsPanel.contains(e.target) && e.target !== settingsBtn)
+    settingsPanel.hidden = true;
+});
+document.getElementById("resetLabels").addEventListener("click", () => {
+  for (const o of [...nodes, ...elements, ...loads]){ o.lx = 0; o.ly = 0; }
+  draw();
+});
+try { const s = parseInt(localStorage.getItem("fembuilder-lblsize")); if (s) applyLabelSize(s); } catch(e){}
+
+// ---------- theme (light / dark) ----------
+function currentTheme(){
+  const explicit = document.documentElement.getAttribute("data-theme");
+  if (explicit) return explicit;
+  return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+}
+function applyTheme(mode){
+  document.documentElement.setAttribute("data-theme", mode);
+  try { localStorage.setItem("fembuilder-theme", mode); } catch(e){}
+  document.getElementById("themeBtn").textContent = mode === "dark" ? "☀️ Light" : "🌙 Dark";
+  draw();   // canvas colours are read from CSS vars at draw time
+}
+document.getElementById("themeBtn").addEventListener("click", () => applyTheme(currentTheme() === "dark" ? "light" : "dark"));
+try { const saved = localStorage.getItem("fembuilder-theme"); if (saved) document.documentElement.setAttribute("data-theme", saved); } catch(e){}
+document.getElementById("themeBtn").textContent = currentTheme() === "dark" ? "☀️ Light" : "🌙 Dark";
+
+// ---------- init ----------
+resize();
+renderInspector();
+updateUndoBtn();
+</script>
+</body>
+</html>
