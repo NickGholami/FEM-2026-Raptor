@@ -10,21 +10,21 @@
     --line:#e2e5ea; --accent:#2f6feb; --accent-soft:#e7effd;
     --node:#1c2230; --node-sel:#2f6feb; --elem:#4b5563; --elem-sel:#2f6feb;
     --load:#e5484d; --bc:#0b8a5b; --grid:#e9ebef; --grid-strong:#d5d9e0;
-    --danger:#e5484d; --guide:#b8730a;
+    --danger:#e5484d; --guide:#b8730a; --force:#8b3fe0;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --bg:#12151c; --panel:#1a1e27; --ink:#e6e9ef; --muted:#9aa2b1;
       --line:#2a2f3a; --accent:#5b8dff; --accent-soft:#1e2a45;
       --node:#e6e9ef; --node-sel:#5b8dff; --elem:#9aa2b1; --elem-sel:#5b8dff;
-      --load:#ff6b6f; --bc:#2bd08a; --grid:#1f242e; --grid-strong:#2a303c; --guide:#e0a458;
+      --load:#ff6b6f; --bc:#2bd08a; --grid:#1f242e; --grid-strong:#2a303c; --guide:#e0a458; --force:#b57bff;
     }
   }
   :root[data-theme="dark"]{
     --bg:#12151c; --panel:#1a1e27; --ink:#e6e9ef; --muted:#9aa2b1;
     --line:#2a2f3a; --accent:#5b8dff; --accent-soft:#1e2a45;
     --node:#e6e9ef; --node-sel:#5b8dff; --elem:#9aa2b1; --elem-sel:#5b8dff;
-    --load:#ff6b6f; --bc:#2bd08a; --grid:#1f242e; --grid-strong:#2a303c; --guide:#e0a458;
+    --load:#ff6b6f; --bc:#2bd08a; --grid:#1f242e; --grid-strong:#2a303c; --guide:#e0a458; --force:#b57bff;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -132,14 +132,17 @@
   #resDock .rd-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);flex:none}
   #resDock .rd-head button{padding:4px 9px;font-size:12px}
   #resDock .rd-body{padding:12px;overflow:auto;flex:1;min-height:0}
-  #settingsPanel{position:fixed;top:52px;right:14px;z-index:60;background:var(--panel);
+  #settingsPanel,#imgMenu{position:fixed;top:52px;right:14px;z-index:60;background:var(--panel);
     border:1px solid var(--line);border-radius:12px;padding:14px;width:260px;
     box-shadow:0 14px 44px rgba(0,0,0,.28)}
-  #settingsPanel h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;
+  #settingsPanel h3,#imgMenu h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;
     letter-spacing:.6px;color:var(--muted)}
+  .sp-check{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px;color:var(--ink)}
+  .sp-check input[type=checkbox]{width:16px;height:16px}
   .sp-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
   .sp-row label{font-size:12px;color:var(--muted);width:66px;flex:none}
   .sp-row input[type=range]{flex:1;min-width:0}
+  .sp-row select{flex:1;min-width:0}
   .sp-row .val{width:24px;text-align:right;font-size:12px;color:var(--ink);font-weight:600}
   .sp-hint{font-size:11.5px;color:var(--muted);line-height:1.5}
 </style>
@@ -163,18 +166,42 @@
   <button id="undoBtn" title="Undo (Ctrl/Cmd+Z)" disabled>↶ Undo</button>
   <button id="clearBtn" class="ghostdanger">Clear</button>
   <button id="resultsBtn" hidden>▤ Results</button>
+  <button id="exportImgBtn" hidden title="Export truss image (PNG)">🖼 Image</button>
   <button id="solveBtn" class="primary">Solve ▸</button>
+  <button id="importBtn" title="Load a FlExtract-style .m file">⤒ Import .m</button>
   <button id="exportBtn">Export .m</button>
+  <input id="importFile" type="file" accept=".m,.txt" hidden>
 </header>
 
 <div id="settingsPanel" hidden>
-  <h3>Settings</h3>
+  <h3>Units</h3>
+  <div class="sp-row"><label>Length</label>
+    <select id="uLength"><option value="none">– (none)</option><option value="m">m</option><option value="mm">mm</option><option value="cm">cm</option></select></div>
+  <div class="sp-row"><label>Force</label>
+    <select id="uForce"><option value="none">– (none)</option><option value="N">N</option><option value="kN">kN</option><option value="MN">MN</option></select></div>
+  <div class="sp-row"><label>E input</label>
+    <select id="uE"><option value="none">– (none)</option><option value="Pa">Pa</option><option value="kPa">kPa</option><option value="MPa">MPa</option><option value="GPa">GPa</option></select></div>
+  <div class="sp-row"><label>A input</label>
+    <select id="uA"><option value="none">– (none)</option><option value="m2">m²</option><option value="cm2">cm²</option><option value="mm2">mm²</option></select></div>
+  <div class="sp-hint">Displacements read out in the length unit and stresses in the E unit. Changing length/force rescales the model to keep its physical size.</div>
+  <h3 style="margin-top:16px">Display</h3>
+  <label class="sp-check"><input id="showLabels" type="checkbox" checked> Show node &amp; element names</label>
+  <label class="sp-check"><input id="showForces" type="checkbox" checked> Show applied forces</label>
   <div class="sp-row"><label>Label size</label>
     <input id="lblSize" type="range" min="8" max="30" step="1" value="14">
     <span class="val" id="lblSizeVal">14</span></div>
   <div class="sp-hint">Font size of the n and e labels.</div>
+  <div class="sp-hint" style="margin-top:8px">The two checkboxes show / hide <i>all</i> names or forces at once. To hide just one label, select a node or element and untick <b>Show this label</b> (or box-select and use the bulk buttons).</div>
   <div class="sp-hint" style="margin-top:10px">In <b>Select</b> mode, drag the n / e labels or a force arrow to reposition it — purely visual, it never changes the model. Double-click one to snap it back.</div>
   <button id="resetLabels" style="margin-top:12px;width:100%">Reset label positions</button>
+</div>
+
+<div id="imgMenu" hidden>
+  <h3>Export image</h3>
+  <button id="imgOriginal" style="width:100%;margin-bottom:8px">Original only</button>
+  <button id="imgDeformed" style="width:100%;margin-bottom:8px">Deformed only</button>
+  <button id="imgBoth" class="primary" style="width:100%">Original + deformed</button>
+  <div class="sp-hint" style="margin-top:10px">Saves a PNG of the current view. Use <b>⊡ Fit</b> first to frame the whole structure.</div>
 </div>
 
 <main id="mainRow">
@@ -269,6 +296,50 @@ const history = [];        // undo stack of serialized states
 let results = null;        // FEA results {order, ndof, D, kes, K, elems, ...}; overlaid when present
 let dispScale = 1;         // deformation display scale
 const LBL = {base:14, sub:10};  // label font sizes (px), driven by the settings slider
+let showLabels = true;     // toggle n / e names on the canvas (Settings)
+let showForces = true;     // toggle applied-force arrows + labels on the canvas (Settings)
+let exportOnlyDeformed = false;  // while true, draw() omits the undeformed geometry (image export)
+let exportOnlyOriginal = false;  // while true, draw() omits the deformed overlay (image export)
+
+// ---------- units ----------
+// The model is stored in ONE consistent system (coords in [length], loads in [force],
+// E in [force/length^2], A in [length^2]); the solver, canvas and .m export use those
+// numbers directly. The pickers below only (a) convert the friendly value you type for
+// E / A into that consistent system and (b) label the outputs. Changing the length or
+// force unit rescales the stored model so its physical size is preserved.
+const UNIT = {length:"none", force:"none", E:"none", A:"none"};
+const LEN_FACT = {none:1, m:1, cm:1e-2, mm:1e-3};        // metres per length unit
+const FRC_FACT = {none:1, N:1, kN:1e3, MN:1e6};          // newtons per force unit
+const E_FACT   = {none:1, Pa:1, kPa:1e3, MPa:1e6, GPa:1e9}; // pascals per E unit
+const A_FACT   = {none:1, m2:1, cm2:1e-4, mm2:1e-6};     // m² per A unit
+const A_LABEL  = {none:"", m2:"m²", cm2:"cm²", mm2:"mm²"};
+const Lf = () => LEN_FACT[UNIT.length];
+const Ff = () => FRC_FACT[UNIT.force];
+const toStoreE = v => v * E_FACT[UNIT.E] * Lf()*Lf() / Ff();   // typed (E unit) -> consistent
+const toDispE  = v => v * Ff() / (Lf()*Lf() * E_FACT[UNIT.E]); // consistent -> typed (E unit)
+const toStoreA = v => v * A_FACT[UNIT.A] / (Lf()*Lf());        // typed (A unit) -> consistent
+const toDispA  = v => v * Lf()*Lf() / A_FACT[UNIT.A];          // consistent -> typed (A unit)
+const eUnit  = () => UNIT.E === "none" ? "" : UNIT.E;
+const aUnit  = () => A_LABEL[UNIT.A];
+const lenU   = () => UNIT.length === "none" ? "" : UNIT.length;
+const frcU   = () => UNIT.force  === "none" ? "" : UNIT.force;
+const stressU = () => eUnit();            // stress has the same dimension as E, shown in the E unit
+const suffix = u => u ? " (" + u + ")" : "";
+const unitTag = u => u ? ' <span class="dim" style="width:auto">' + u + "</span>" : "";
+// switch length/force system, rescaling the stored model to keep its physical size
+function setUnitSystem(newLength, newForce){
+  const lo = Lf(), fo = Ff();
+  UNIT.length = newLength; UNIT.force = newForce;
+  const ln = Lf(), fn = Ff();
+  if (lo !== ln || fo !== fn){
+    const rL = lo/ln, rF = fo/fn;             // coord & load rescale factors
+    for (const n of nodes){ n.x *= rL; n.y *= rL; }
+    for (const b of bounds) b.value *= rL;    // prescribed displacements are lengths
+    for (const l of loads)  l.value *= rF;
+    for (const e of elements){ e.E *= rF/(rL*rL); e.A *= rL*rL; }
+    invalidateResults();
+  }
+}
 let draggingLabel = null;  // {obj, sx, sy, lx, ly} while dragging a label / force (visual only)
 let labelHits = [];        // per-frame draggable-label hitboxes {obj,x,y,w,h}
 const labelOff = o => ({x:o.lx || 0, y:o.ly || 0});  // stored visual offset of a label/force
@@ -359,8 +430,9 @@ function draw(){
   // reference geometry (purely visual, drawn behind everything)
   for (const gd of guides) drawGuide(gd, selection && selection.type==="guide" && selection.uid===gd.uid);
   if (guideDraft) drawGuide(guideDraft, true);
-  // elements
-  for (const e of elements) drawElement(e);
+  // elements (undeformed geometry is skipped for a deformed-only image export)
+  const skipUndeformed = results && exportOnlyDeformed;
+  if (!skipUndeformed) for (const e of elements) drawElement(e);
   // pending element rubber-band handled on mousemove via draw()
   if (tool === "element" && pendingNode != null){
     const a = nodeByUid(pendingNode);
@@ -371,12 +443,12 @@ function draw(){
     }
   }
   // decorations
-  for (const b of bounds) drawBC(b);
-  for (const l of loads) drawLoad(l);
+  drawSupports();
+  if (showForces) for (const l of loads) drawLoad(l);
   // deformed overlay (drawn under nodes/labels so numbers stay legible)
-  if (results) drawResults();
-  // nodes
-  for (const n of nodes) drawNode(n);
+  if (results && !exportOnlyOriginal) drawResults();
+  // nodes (undeformed markers skipped for a deformed-only image export)
+  if (!skipUndeformed) for (const n of nodes) drawNode(n);
   // lasso selection rectangle (on top)
   if (lassoRect){
     const x = Math.min(lassoRect.x0, lassoRect.x1), y = Math.min(lassoRect.y0, lassoRect.y1);
@@ -384,8 +456,74 @@ function draw(){
     ctx.fillStyle = css("--accent-soft"); ctx.globalAlpha = 0.45; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 1;
     ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.2; ctx.setLineDash([5,3]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
   }
+  // legend baked into image exports (the on-screen legend is a separate HTML overlay)
+  drawLegend();
+  // hover tooltip (topmost) — reveals the label of the node/beam under the cursor
+  drawHoverLabel();
 }
 function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+// colour legend drawn onto the canvas so it is captured in an exported PNG.
+// Items are chosen to match what the exported view actually shows.
+function drawLegend(){
+  if (!exporting || !results) return;
+  const items = [];
+  if (!exportOnlyDeformed) items.push(["undeformed", css("--elem"), 0.5]);
+  if (!exportOnlyOriginal){
+    items.push(["tension", css("--accent"), 1]);
+    items.push(["compression", css("--load"), 1]);
+    items.push(["non-loaded", css("--bc"), 1]);
+  }
+  if (!items.length) return;
+  const fs = 13, rowH = 22, padX = 12, padY = 9, swW = 22, gap = 10, x = 12, y = 12;
+  ctx.save();
+  ctx.font = "600 " + fs + "px system-ui,sans-serif";
+  let textW = 0; for (const it of items) textW = Math.max(textW, ctx.measureText(it[0]).width);
+  const boxW = padX*2 + swW + gap + textW, boxH = padY*2 + rowH*items.length;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, boxW, boxH, 8); else ctx.rect(x, y, boxW, boxH);
+  ctx.fillStyle = css("--panel"); ctx.fill();
+  ctx.lineWidth = 1; ctx.strokeStyle = css("--line"); ctx.stroke();
+  ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  for (let i = 0; i < items.length; i++){
+    const [labelTxt, color, alpha] = items[i];
+    const cy = y + padY + rowH*i + rowH/2;
+    ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(x + padX, cy); ctx.lineTo(x + padX + swW, cy); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.fillStyle = css("--ink");
+    ctx.font = "600 " + fs + "px system-ui,sans-serif";
+    ctx.fillText(labelTxt, x + padX + swW + gap, cy);
+  }
+  ctx.restore();
+}
+
+// pill-style label shown while hovering a node or beam (independent of the show/hide-label settings)
+function drawHoverLabel(){
+  if (exporting || !hover) return;
+  let cx, cy, prefix, num;
+  if (hover.type === "node"){
+    const n = nodeByUid(hover.uid); if (!n || n.hidden) return;
+    cx = w2sx(n.x); cy = w2sy(n.y) - 24; prefix = "n"; num = nodeNum(n.uid);
+  } else {
+    const e = elements.find(el => el.uid === hover.uid); if (!e || e.hidden) return;
+    const a = nodeByUid(e.a), b = nodeByUid(e.b); if (!a || !b) return;
+    cx = (w2sx(a.x) + w2sx(b.x)) / 2; cy = (w2sy(a.y) + w2sy(b.y)) / 2 - 16; prefix = "e"; num = elemNum(e);
+  }
+  const base = 14, sub = 10;
+  ctx.save();
+  ctx.font = "600 " + base + "px system-ui,sans-serif"; const wP = ctx.measureText(prefix).width;
+  ctx.font = "600 " + sub + "px system-ui,sans-serif"; const wN = ctx.measureText(String(num)).width;
+  const boxW = wP + wN + 18, boxH = base + 10, bx = cx - boxW/2, by = cy - boxH/2;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(bx, by, boxW, boxH, 7); else ctx.rect(bx, by, boxW, boxH);
+  ctx.fillStyle = css("--panel"); ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = css("--accent"); ctx.stroke();
+  ctx.fillStyle = css("--accent"); ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  const startX = cx - (wP + wN) / 2;
+  ctx.font = "600 " + base + "px system-ui,sans-serif"; ctx.fillText(prefix, startX, cy);
+  ctx.font = "600 " + sub + "px system-ui,sans-serif"; ctx.fillText(String(num), startX + wP + 1, cy + base*0.26);
+  ctx.restore();
+}
 
 function drawGrid(W, H){
   const g = gridSpacing();
@@ -426,30 +564,34 @@ function drawGrid(W, H){
 }
 
 function drawElement(e){
+  if (e.hidden) return;                     // filtered out of the view (visual only)
   const a = nodeByUid(e.a), b = nodeByUid(e.b);
   if (!a || !b) return;
   const sel = (selection && selection.type === "element" && selection.uid === e.uid) || multi.elements.has(e.uid);
-  const faded = !!results;                 // undeformed geometry fades once solved
+  const faded = !!results && !exportOnlyOriginal;  // undeformed fades once solved, except in an original-only export
   ctx.save();
   if (faded) ctx.globalAlpha = 0.28;
   ctx.strokeStyle = sel ? css("--elem-sel") : css("--elem");
   ctx.lineWidth = sel ? 4 : 2.5;
   ctx.beginPath(); ctx.moveTo(w2sx(a.x), w2sy(a.y)); ctx.lineTo(w2sx(b.x), w2sy(b.y)); ctx.stroke();
   // label (subscript) — offset is a purely-visual drag position
-  const off = labelOff(e);
-  const mx = (w2sx(a.x) + w2sx(b.x)) / 2, my = (w2sy(a.y) + w2sy(b.y)) / 2;
-  const bb = labelSub("e", elemNum(e), mx + off.x, my - 8 + off.y, sel ? css("--elem-sel") : css("--muted"));
-  labelHits.push({obj:e, ...bb});
+  if (showLabels && !e.lblHidden){
+    const off = labelOff(e);
+    const mx = (w2sx(a.x) + w2sx(b.x)) / 2, my = (w2sy(a.y) + w2sy(b.y)) / 2;
+    const bb = labelSub("e", elemNum(e), mx + off.x, my - 8 + off.y, sel ? css("--elem-sel") : css("--muted"));
+    labelHits.push({obj:e, ...bb});
+  }
   ctx.restore();
 }
 
 function drawNode(n){
+  if (n.hidden) return;                      // filtered out of the view (visual only)
   const sx = w2sx(n.x), sy = w2sy(n.y);
   const sel = selection && selection.type === "node" && selection.uid === n.uid;
   const m = multi.nodes.has(n.uid);
   const pend = pendingNode === n.uid;
   ctx.save();
-  if (results) ctx.globalAlpha = 0.32;      // fade undeformed node dot when solved
+  if (results && !exportOnlyOriginal) ctx.globalAlpha = 0.32;  // fade undeformed dot when solved, except original-only export
   ctx.beginPath(); ctx.arc(sx, sy, (sel||m) ? 7 : 5.5, 0, 7);
   ctx.fillStyle = (sel||m) ? css("--node-sel") : css("--node"); ctx.fill();
   if (sel || pend || m){
@@ -458,9 +600,11 @@ function drawNode(n){
   }
   ctx.restore();
   // label stays fully visible (subscript, a bit bigger) — offset is a visual drag position
-  const off = labelOff(n);
-  const bb = labelSub("n", nodeNum(n.uid), sx + off.x, sy - 16 + off.y, (sel||m) ? css("--node-sel") : css("--ink"));
-  labelHits.push({obj:n, ...bb});
+  if (showLabels && !n.lblHidden){
+    const off = labelOff(n);
+    const bb = labelSub("n", nodeNum(n.uid), sx + off.x, sy - 16 + off.y, (sel||m) ? css("--node-sel") : css("--ink"));
+    labelHits.push({obj:n, ...bb});
+  }
 }
 
 // draws e.g. "n" + a smaller, lowered "1" centred at (x,y); returns its bounding box
@@ -494,9 +638,9 @@ function drawLoad(l){
   let ex = sx, ey = sy;
   if (l.dof === 1) ex = sx + sign * len;      // x
   else ey = sy - sign * len;                  // y (world up = screen up)
-  arrow(sx, sy, ex, ey, css("--load"));
+  arrow(sx, sy, ex, ey, css("--force"));
   const lab = (l.dof === 1 ? "Fx=" : "Fy=") + fmt(l.value);
-  label(lab, (sx+ex)/2 + (l.dof===1?0:14), (sy+ey)/2 + (l.dof===1?-10:0), css("--load"), true);
+  label(lab, (sx+ex)/2 + (l.dof===1?0:14), (sy+ey)/2 + (l.dof===1?-10:0), css("--force"), true);
   // draggable hitbox around the whole arrow (+ some room for the label)
   const minx = Math.min(sx, ex) - 14, maxx = Math.max(sx, ex) + 22;
   const miny = Math.min(sy, ey) - 16, maxy = Math.max(sy, ey) + 16;
@@ -512,20 +656,57 @@ function arrow(x0,y0,x1,y1,color){
   ctx.closePath(); ctx.fill();
 }
 
-function drawBC(b){
-  const n = nodeByUid(b.node); if (!n) return;
-  const sx = w2sx(n.x), sy = w2sy(n.y);
-  ctx.strokeStyle = css("--bc"); ctx.fillStyle = css("--bc"); ctx.lineWidth = 2;
-  const fixed = b.value === 0;
-  if (b.dof === 1){ // horizontal constraint -> triangle on the left
-    ctx.beginPath(); ctx.moveTo(sx-12, sy); ctx.lineTo(sx-24, sy-7); ctx.lineTo(sx-24, sy+7);
-    ctx.closePath(); fixed ? ctx.fill() : ctx.stroke();
-    if(!fixed) label("ux="+fmt(b.value), sx-26, sy+16, css("--bc"), true);
-  } else {          // vertical constraint -> triangle below
-    ctx.beginPath(); ctx.moveTo(sx, sy+12); ctx.lineTo(sx-7, sy+24); ctx.lineTo(sx+7, sy+24);
-    ctx.closePath(); fixed ? ctx.fill() : ctx.stroke();
-    if(!fixed) label("uy="+fmt(b.value), sx, sy+34, css("--bc"), true);
+// Supports are drawn per node so the glyph reflects the whole constraint:
+//   both DOF locked -> pinned support (triangle, no wheels)
+//   only uy locked  -> roller free to slide horizontally (wheels below)
+//   only ux locked  -> roller free to slide vertically   (wheels to the side)
+function drawSupports(){
+  const byNode = new Map();
+  for (const b of bounds){
+    let g = byNode.get(b.node); if (!g){ g = {}; byNode.set(b.node, g); }
+    if (b.dof === 1) g.x = b; else g.y = b;
   }
+  for (const [nu, g] of byNode){
+    const n = nodeByUid(nu); if (!n) continue;
+    drawSupport(w2sx(n.x), w2sy(n.y), g.x, g.y);
+  }
+}
+function tri(ax,ay,bx,by,cx,cy,fill){
+  ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.lineTo(cx,cy);
+  ctx.closePath(); fill ? ctx.fill() : ctx.stroke();
+}
+function wheel(cx,cy){ ctx.beginPath(); ctx.arc(cx,cy,3,0,7); ctx.stroke(); }
+function groundH(cx,gy,half){       // horizontal ground line + hatching underneath
+  ctx.beginPath(); ctx.moveTo(cx-half,gy); ctx.lineTo(cx+half,gy);
+  for (let x=cx-half+3; x<=cx+half; x+=5){ ctx.moveTo(x,gy); ctx.lineTo(x-5,gy+6); }
+  ctx.stroke();
+}
+function groundV(gx,cy,half){       // vertical ground line + hatching to the left
+  ctx.beginPath(); ctx.moveTo(gx,cy-half); ctx.lineTo(gx,cy+half);
+  for (let y=cy-half+3; y<=cy+half; y+=5){ ctx.moveTo(gx,y); ctx.lineTo(gx-6,y-5); }
+  ctx.stroke();
+}
+function drawSupport(sx,sy,bx,by){
+  ctx.save();
+  ctx.strokeStyle = css("--bc"); ctx.fillStyle = css("--bc"); ctx.lineWidth = 2;
+  const both = bx && by;
+  const fixed = (bx ? bx.value===0 : true) && (by ? by.value===0 : true); // prescribed disp -> hollow
+  if (both){                         // pinned support: triangle apex at node, ground below
+    tri(sx,sy, sx-11,sy+17, sx+11,sy+17, fixed);
+    groundH(sx, sy+17, 14);
+  } else if (by){                    // locked in y only -> roller (wheels below), free in x
+    tri(sx,sy, sx-11,sy+14, sx+11,sy+14, fixed);
+    wheel(sx-5.5, sy+18); wheel(sx+5.5, sy+18);
+    groundH(sx, sy+22, 14);
+  } else if (bx){                    // locked in x only -> roller against wall (wheels at side), free in y
+    tri(sx,sy, sx-14,sy-11, sx-14,sy+11, fixed);
+    wheel(sx-18, sy-5.5); wheel(sx-18, sy+5.5);
+    groundV(sx-22, sy, 14);
+  }
+  // prescribed-displacement annotations
+  if (bx && bx.value!==0) label("ux="+fmt(bx.value), sx-28, sy+ (both?32:0), css("--bc"), true);
+  if (by && by.value!==0) label("uy="+fmt(by.value), sx, sy+ (both?46:38), css("--bc"), true);
+  ctx.restore();
 }
 
 function drawGuide(g, sel){
@@ -588,6 +769,8 @@ function distToSeg(px, py, x1, y1, x2, y2){
 
 // ---------- mouse ----------
 let lastMouse = null, panning = false, spaceDown = false, panStart = null;
+let hover = null;          // {type:'node'|'element', uid} under the cursor — reveals its label
+let exporting = false;     // true only while rendering an image export (suppresses the hover label)
 function evPos(e){ const r = cv.getBoundingClientRect(); return {x: e.clientX - r.left, y: e.clientY - r.top}; }
 
 cv.addEventListener("mousedown", e => {
@@ -666,9 +849,17 @@ window.addEventListener("mousemove", e => {
   }
   else {
     setStatus(`x = <b>${fmt(snap(s2wx(p.x)))}</b> &nbsp; y = <b>${fmt(snap(s2wy(p.y)))}</b> &nbsp; · ${nodes.length} nodes, ${elements.length} elements`);
-    if (tool === "element" && pendingNode != null) draw();
+    // hover: reveal the label of the node / beam under the cursor (visible geometry only)
+    const hn = hitNode(p.x, p.y);
+    let nh = (hn && !hn.hidden) ? {type:"node", uid:hn.uid} : null;
+    if (!nh){ const he = hitElement(p.x, p.y); if (he && !he.hidden) nh = {type:"element", uid:he.uid}; }
+    if (!spaceDown && !panning) cv.style.cursor = nh ? "pointer" : "crosshair";
+    const changed = (!!nh !== !!hover) || (nh && hover && (nh.type !== hover.type || nh.uid !== hover.uid));
+    if (changed){ hover = nh; draw(); }
+    else if (tool === "element" && pendingNode != null) draw();
   }
 });
+cv.addEventListener("mouseleave", () => { if (hover){ hover = null; draw(); } });
 window.addEventListener("mouseup", e => {
   panning = false; panStart = null;
   if (draggingLabel){ draggingLabel = null; cv.style.cursor = spaceDown ? "grab" : "crosshair"; draw(); return; }
@@ -812,13 +1003,64 @@ function renderInspector(){
   const body = document.createElement("div"); body.id = "inspBody"; host.appendChild(body);
   if (multi.nodes.size || multi.elements.size){
     body.className = "";
+    const nE = multi.elements.size;
+    let secHTML = "";
+    if (nE){
+      const els = elements.filter(e => multi.elements.has(e.uid));
+      const sameE = els.every(e => e.E === els[0].E) ? fmt(toDispE(els[0].E)) : "";
+      const sameA = els.every(e => e.A === els[0].A) ? fmt(toDispA(els[0].A)) : "";
+      secHTML = `
+      <div class="grp">
+        <div class="title">Section properties <span class="tag">${nE} elem</span></div>
+        <div class="row"><label>E modulus${suffix(eUnit())}</label><input id="mE" type="number" step="any" value="${sameE}" placeholder="keep"></div>
+        <div class="row"><label>Area A${suffix(aUnit())}</label><input id="mA" type="number" step="any" value="${sameA}" placeholder="keep"></div>
+        <button class="primary" id="applyMulti" style="width:100%">Apply to ${nE} selected element(s)</button>
+        <div class="metric" style="margin-top:6px">A blank field leaves that value unchanged. Different values across the selection show as blank.</div>
+      </div>`;
+    }
+    let dispHTML = "";
+    if (results && multi.nodes.size){
+      let rows = "";
+      for (const o of results.order) if (multi.nodes.has(o.uid))
+        rows += `<tr><td>${o.name}</td><td>${nf(o.ux)}</td><td>${nf(o.uy)}</td></tr>`;
+      dispHTML = `
+      <div class="grp">
+        <div class="title">Displacement <span class="tag">solved</span></div>
+        <table class="data"><tr><th>node</th><th>u_x${suffix(lenU())}</th><th>u_y${suffix(lenU())}</th></tr>${rows}</table>
+      </div>`;
+    }
     body.innerHTML = `
       <div class="grp">
         <div class="title">Lasso selection</div>
-        <div class="metric"><b>${multi.nodes.size}</b> node(s) · <b>${multi.elements.size}</b> element(s)</div>
+        <div class="metric"><b>${multi.nodes.size}</b> node(s) · <b>${nE}</b> element(s)</div>
         <div class="metric">Deleting a node also removes its elements, loads and BCs.</div>
       </div>
+      ${dispHTML}
+      ${secHTML}
+      <div class="row" style="gap:6px;margin-bottom:10px">
+        <button id="showMultiLbl" style="flex:1">Show labels</button>
+        <button id="hideMultiLbl" style="flex:1">Hide labels</button>
+      </div>
       <button class="ghostdanger" id="delMulti">Delete selected</button>`;
+    const setMultiLbl = hidden => {
+      for (const u of multi.nodes){ const n = nodeByUid(u); if (n) n.lblHidden = hidden; }
+      for (const e of elements) if (multi.elements.has(e.uid)) e.lblHidden = hidden;
+      draw();
+    };
+    document.getElementById("showMultiLbl").addEventListener("click", () => setMultiLbl(false));
+    document.getElementById("hideMultiLbl").addEventListener("click", () => setMultiLbl(true));
+    if (nE){
+      document.getElementById("applyMulti").addEventListener("click", () => {
+        const eV = document.getElementById("mE").value.trim();
+        const aV = document.getElementById("mA").value.trim();
+        const eNum = parseFloat(eV), aNum = parseFloat(aV);
+        const setE = eV !== "" && !isNaN(eNum), setA = aV !== "" && !isNaN(aNum);
+        if (!setE && !setA) return;
+        pushHistory();
+        for (const e of elements) if (multi.elements.has(e.uid)){ if (setE) e.E = toStoreE(eNum); if (setA) e.A = toStoreA(aNum); }
+        renderInspector(); draw();
+      });
+    }
     document.getElementById("delMulti").addEventListener("click", deleteMulti);
     return;
   }
@@ -868,6 +1110,31 @@ function renderGuideInspector(body){
   setDel();
 }
 
+// solved-displacement block for one node (empty string until the model is solved)
+function nodeDispHTML(uid){
+  if (!results) return "";
+  const o = results.order.find(r => r.uid === uid);
+  if (!o) return "";
+  const mag = Math.hypot(o.ux, o.uy), u = lenU();
+  const rr = results.reactions.find(r => r.uid === uid);
+  let reacRows = "";
+  if (rr){
+    const f = frcU();
+    if (rr.rx != null) reacRows += `<div class="metric">R<sub>x</sub> = <b>${nf(rr.rx)}</b> ${f}</div>`;
+    if (rr.ry != null) reacRows += `<div class="metric">R<sub>y</sub> = <b>${nf(rr.ry)}</b> ${f}</div>`;
+  }
+  return `
+    <div class="grp">
+      <div class="title">Displacement <span class="tag">solved</span></div>
+      <div class="metric">u<sub>x</sub> = <b>${nf(o.ux)}</b> ${u}</div>
+      <div class="metric">u<sub>y</sub> = <b>${nf(o.uy)}</b> ${u}</div>
+      <div class="metric">|u| = <b>${nf(mag)}</b> ${u}</div>
+    </div>` + (reacRows ? `
+    <div class="grp">
+      <div class="title">Reaction forces <span class="tag">solved</span></div>
+      ${reacRows}
+    </div>` : "");
+}
 function renderNodeInspector(body){
   const n = nodeByUid(selection.uid);
   const lx = loads.find(l => l.node===n.uid && l.dof===1);
@@ -879,6 +1146,7 @@ function renderNodeInspector(body){
       <div class="title">Node <span class="tag">${nodeHTML(n.uid)}</span></div>
       <div class="row"><label>x</label><input id="nx" type="number" step="0.1" value="${n.x}"></div>
       <div class="row"><label>y</label><input id="ny" type="number" step="0.1" value="${n.y}"></div>
+      <label class="sp-check" style="margin-top:2px"><input id="nLbl" class="lblvis" type="checkbox" ${n.lblHidden?'':'checked'}> Show this label</label>
     </div>
     <div class="grp">
       <div class="title">Loads</div>
@@ -893,6 +1161,7 @@ function renderNodeInspector(body){
         <input id="cyv" class="cval" type="number" step="0.1" value="${by?by.value:0}" ${by?'':'disabled'} placeholder="0"></div>
       <div class="metric" style="margin-top:4px">Check = constrained. Value 0 = locked; a value = prescribed displacement.</div>
     </div>
+    ${nodeDispHTML(n.uid)}
     <button class="ghostdanger" id="delNode">Delete node</button>`;
 
   const upd = () => draw();
@@ -900,6 +1169,7 @@ function renderNodeInspector(body){
   document.getElementById("ny").addEventListener("input", e => { n.y = parseFloat(e.target.value)||0; upd(); });
   bindLoad("fx", n.uid, 1); bindLoad("fy", n.uid, 2);
   bindBC("cx","cxv", n.uid, 1); bindBC("cy","cyv", n.uid, 2);
+  document.getElementById("nLbl").addEventListener("change", ev => { n.lblHidden = !ev.target.checked; draw(); });
   document.getElementById("delNode").addEventListener("click", deleteSelection);
 }
 
@@ -938,13 +1208,15 @@ function renderElementInspector(body){
     </div>
     <div class="grp">
       <div class="title">Section properties</div>
-      <div class="row"><label>E modulus</label><input id="pE" type="number" step="0.1" value="${e.E}"></div>
-      <div class="row"><label>Area A</label><input id="pA" type="number" step="0.1" value="${e.A}"></div>
+      <div class="row"><label>E modulus${suffix(eUnit())}</label><input id="pE" type="number" step="any" value="${fmt(toDispE(e.E))}"></div>
+      <div class="row"><label>Area A${suffix(aUnit())}</label><input id="pA" type="number" step="any" value="${fmt(toDispA(e.A))}"></div>
       <div class="metric">Distinct (E, A) pairs become rows of <b>mprop</b>.</div>
     </div>
+    <label class="sp-check" style="margin:0 0 12px"><input id="eLbl" class="lblvis" type="checkbox" ${e.lblHidden?'':'checked'}> Show this label</label>
     <button class="ghostdanger" id="delElem">Delete element</button>`;
-  document.getElementById("pE").addEventListener("input", ev => { e.E = parseFloat(ev.target.value)||0; });
-  document.getElementById("pA").addEventListener("input", ev => { e.A = parseFloat(ev.target.value)||0; });
+  document.getElementById("pE").addEventListener("input", ev => { e.E = toStoreE(parseFloat(ev.target.value)||0); });
+  document.getElementById("pA").addEventListener("input", ev => { e.A = toStoreA(parseFloat(ev.target.value)||0); });
+  document.getElementById("eLbl").addEventListener("change", ev => { e.lblHidden = !ev.target.checked; draw(); });
   document.getElementById("delElem").addEventListener("click", deleteSelection);
 }
 
@@ -1005,6 +1277,7 @@ function solveFEA(){
   // Load vector
   const P = zeros(ndof);
   for (const l of loads){ P[2*nodeIndex(l.node) + (l.dof-1)] += l.value; }
+  const Pglobal = P.slice();   // applied loads, kept for reaction recovery
 
   // Enforce prescribed displacements (mirrors fea.py enforce: read column, adjust P, then zero row/col)
   const fixedDofs = [];
@@ -1024,23 +1297,50 @@ function solveFEA(){
   const D = linSolve(K, P);
   if (!D) return {error:"Singular stiffness matrix — the structure is a mechanism (add/adjust supports)."};
 
-  // Recover element strain/stress and classify
-  const TOL = 1e-9;
-  const elems = kes.map(k => {
+  // Recover element strain/stress
+  const raw = kes.map(k => {
     const e = elements[kes.indexOf(k)];
     const {dx, dy, L} = elemGeom(e);
     const B0 = [-dx/(L*L), -dy/(L*L), dx/(L*L), dy/(L*L)];
     const d = k.edof.map(g => D[g]);
     const stress = e.E * (B0[0]*d[0] + B0[1]*d[1] + B0[2]*d[2] + B0[3]*d[3]);
-    const strain = stress / e.E;
-    const state = stress < -TOL ? "Compression" : stress > TOL ? "Tension" : "Non-loaded";
-    return {name:k.name, n1:k.n1, n2:k.n2, L, strain, stress, state};
+    return {name:k.name, n1:k.n1, n2:k.n2, L, strain: stress / e.E, stress};
   });
+  // Classify: a bar counts as "non-loaded" (green) when its |stress| is below
+  // 1e-5 times the largest |stress| in the structure; otherwise tension / compression.
+  const maxStress = raw.reduce((m, r) => Math.max(m, Math.abs(r.stress)), 0);
+  const TOL = 1e-5 * maxStress;
+  const elems = raw.map(r => ({
+    ...r,
+    state: Math.abs(r.stress) <= TOL ? "Non-loaded" : r.stress > 0 ? "Tension" : "Compression"
+  }));
 
   // Per-node displacements, in current node order
   const order = nodes.map(n => ({name:nodeHTML(n.uid), uid:n.uid, x:n.x, y:n.y,
                                  ux:D[2*nodeIndex(n.uid)], uy:D[2*nodeIndex(n.uid)+1]}));
-  return {nn, ndof, K:Kglobal, kes, P, D, elems, order};
+
+  // Reaction forces: R = Kglobal*D - Pglobal (≈ 0 at free DOFs; support forces at constrained DOFs)
+  const R = zeros(ndof);
+  for (let i = 0; i < ndof; i++){ let s = 0; for (let j = 0; j < ndof; j++) s += Kglobal[i][j] * D[j]; R[i] = s - Pglobal[i]; }
+  const rmap = new Map();   // aggregate per constrained node -> {rx, ry}
+  for (const bc of bounds){
+    const gd = 2*nodeIndex(bc.node) + (bc.dof-1);
+    let o = rmap.get(bc.node);
+    if (!o){ o = {uid:bc.node, name:nodeHTML(bc.node), rx:null, ry:null}; rmap.set(bc.node, o); }
+    if (bc.dof === 1) o.rx = R[gd]; else o.ry = R[gd];
+  }
+  const reactions = [...rmap.values()];
+  // snap round-off to zero: reactions below 1e-6 x the largest |reaction| are shown as 0
+  let maxR = 0;
+  for (const rr of reactions){ if (rr.rx != null) maxR = Math.max(maxR, Math.abs(rr.rx)); if (rr.ry != null) maxR = Math.max(maxR, Math.abs(rr.ry)); }
+  const rtol = 1e-6 * maxR;
+  for (const rr of reactions){ if (rr.rx != null && Math.abs(rr.rx) <= rtol) rr.rx = 0; if (rr.ry != null && Math.abs(rr.ry) <= rtol) rr.ry = 0; }
+  // global equilibrium: applied + reactions should sum to ~0 in each direction
+  let sumX = 0, sumY = 0;
+  for (let k = 0; k < ndof; k += 2){ sumX += R[k] + Pglobal[k]; sumY += R[k+1] + Pglobal[k+1]; }
+  const equil = {fx:sumX, fy:sumY};
+
+  return {nn, ndof, K:Kglobal, kes, P, D, elems, order, reactions, equil};
 }
 
 function stressColor(state){
@@ -1065,13 +1365,15 @@ function drawResults(){
   // (undeformed geometry is drawn faded by drawElement/drawNode)
   // deformed elements, coloured by axial stress state
   for (let i = 0; i < elements.length; i++){
-    const e = elements[i], pa = defPos(e.a), pb = defPos(e.b);
+    const e = elements[i]; if (e.hidden) continue;
+    const pa = defPos(e.a), pb = defPos(e.b);
     ctx.strokeStyle = stressColor(results.elems[i].state); ctx.lineWidth = 3.5;
     ctx.beginPath(); ctx.moveTo(w2sx(pa.x), w2sy(pa.y)); ctx.lineTo(w2sx(pb.x), w2sy(pb.y)); ctx.stroke();
   }
   // deformed node markers
   ctx.fillStyle = css("--ink");
-  for (const o of results.order){ const p = defPos(o.uid);
+  for (const o of results.order){ const nn = nodeByUid(o.uid); if (nn && nn.hidden) continue;
+    const p = defPos(o.uid);
     ctx.beginPath(); ctx.arc(w2sx(p.x), w2sy(p.y), 3.5, 0, 7); ctx.fill(); }
 }
 
@@ -1103,23 +1405,32 @@ let resultsMode = "modal";   // "modal" | "side" | "bottom"
 function resultsSummary(){ const r = results; return r.nn+" nodes · "+r.ndof+" DOF · "+r.elems.length+" elements"; }
 function resultsContentHTML(){
   const r = results;
-  let disp = '<table class="data"><tr><th>node</th><th>u_x</th><th>u_y</th></tr>';
+  const uL = lenU(), uS = stressU(), uE = eUnit(), uA = aUnit(), uF = frcU();
+  const anyUnit = uL || uS || uE || uA || uF;
+  const unitsBanner = `<div class="metric" style="margin-bottom:10px">Units — displacement: <b>${uL||"–"}</b> · stress: <b>${uS||"–"}</b> · reaction: <b>${uF||"–"}</b> · length: <b>${uL||"–"}</b> · E: <b>${uE||"–"}</b> · A: <b>${uA||"–"}</b>${anyUnit?"":" &nbsp;(set units in ⚙ Settings)"}</div>`;
+  let disp = '<table class="data"><tr><th>node</th><th>u_x'+suffix(uL)+'</th><th>u_y'+suffix(uL)+'</th></tr>';
   for (const o of r.order) disp += `<tr><td>${o.name}</td><td>${nf(o.ux)}</td><td>${nf(o.uy)}</td></tr>`;
   disp += '</table>';
-  let el = '<table class="data"><tr><th>elem</th><th>nodes</th><th>length</th><th>strain</th><th>stress</th><th>state</th></tr>';
+  let el = '<table class="data"><tr><th>elem</th><th>nodes</th><th>length'+suffix(uL)+'</th><th>strain</th><th>stress'+suffix(uS)+'</th><th>state</th></tr>';
   for (const e of r.elems){
     const cls = e.state==="Compression"?"comp":e.state==="Tension"?"tens":"none";
-    el += `<tr><td>${e.name}</td><td>${e.n1}–${e.n2}</td><td>${nf(e.L)}</td><td>${nf(e.strain)}</td><td>${nf(e.stress)}</td><td><span class="pill ${cls}">${e.state}</span></td></tr>`;
+    el += `<tr><td>${e.name}</td><td>${e.n1}–${e.n2}</td><td>${nf(e.L)}</td><td>${nf(e.strain)}</td><td>${nf(toDispE(e.stress))}</td><td><span class="pill ${cls}">${e.state}</span></td></tr>`;
   }
   el += '</table>';
+  let reac = '<table class="data"><tr><th>node</th><th>R_x'+suffix(uF)+'</th><th>R_y'+suffix(uF)+'</th></tr>';
+  for (const rr of r.reactions) reac += `<tr><td>${rr.name}</td><td>${rr.rx==null?"–":nf(rr.rx)}</td><td>${rr.ry==null?"–":nf(rr.ry)}</td></tr>`;
+  reac += '</table>';
+  reac += `<div class="metric" style="margin-top:6px">Equilibrium check: ΣF<sub>x</sub> = <b>${nf(r.equil.fx)}</b>, ΣF<sub>y</sub> = <b>${nf(r.equil.fy)}</b> ${uF} &nbsp;(applied + reactions, should be ≈ 0)</div>`;
   let kes = '';
   for (const k of r.kes){
     const labs = [k.n1+" x", k.n1+" y", k.n2+" x", k.n2+" y"];
-    kes += `<details><summary>${k.name} &nbsp; (${k.n1}–${k.n2}, E=${nf(k.E)}, A=${nf(k.A)}, L=${nf(k.L)})</summary><div class="dtl-inner">${matTable(k.ke, labs, labs)}</div></details>`;
+    kes += `<details><summary>${k.name} &nbsp; (${k.n1}–${k.n2}, E=${nf(toDispE(k.E))}${suffix(uE)}, A=${nf(toDispA(k.A))}${suffix(uA)}, L=${nf(k.L)}${suffix(uL)})</summary><div class="dtl-inner">${matTable(k.ke, labs, labs)}</div></details>`;
   }
   const dl = dofLabels(r.ndof);
-  return `<details open><summary>Nodal displacements</summary><div class="dtl-inner">${disp}</div></details>`
+  return unitsBanner
+    + `<details open><summary>Nodal displacements</summary><div class="dtl-inner">${disp}</div></details>`
     + `<details open><summary>Element strain / stress &amp; state</summary><div class="dtl-inner">${el}</div></details>`
+    + `<details open><summary>Reaction forces</summary><div class="dtl-inner">${reac}</div></details>`
     + `<details><summary>Global stiffness matrix K (${r.ndof}×${r.ndof})</summary><div class="dtl-inner">${matTable(r.K, dl, dl)}</div></details>`
     + `<details><summary>Element stiffness matrices (${r.kes.length})</summary><div class="dtl-inner">${kes}</div></details>`;
 }
@@ -1152,9 +1463,45 @@ function refreshResultsUI(){
   const on = !!results;
   document.getElementById("dscaleWrap").hidden = !on;
   document.getElementById("resultsBtn").hidden = !on;
+  document.getElementById("exportImgBtn").hidden = !on;
   document.getElementById("reslegend").hidden = !on;
-  if (!on) closeResults();
+  if (!on){ closeResults(); document.getElementById("imgMenu").hidden = true; }
 }
+
+// ---------- image export (PNG of the current canvas view) ----------
+function exportImage(mode){
+  if (!results) return;
+  document.getElementById("imgMenu").hidden = true;
+  const prevD = exportOnlyDeformed, prevO = exportOnlyOriginal;
+  exportOnlyDeformed = (mode === "deformed");
+  exportOnlyOriginal = (mode === "original");
+  exporting = true;
+  draw();                                   // re-render the visible canvas for the chosen mode
+  const url = cv.toDataURL("image/png");
+  exporting = false;
+  exportOnlyDeformed = prevD; exportOnlyOriginal = prevO;
+  draw();                                   // restore the normal view
+  let base = (document.getElementById("fname").value.trim() || "truss").replace(/\.m$/i, "");
+  const suffix = mode === "deformed" ? "_deformed" : mode === "original" ? "_original" : "_orig+deformed";
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = base + suffix + ".png";
+  a.click();
+}
+const imgMenu = document.getElementById("imgMenu");
+document.getElementById("exportImgBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  if (!results) return;
+  document.getElementById("settingsPanel").hidden = true;
+  imgMenu.hidden = !imgMenu.hidden;
+});
+document.getElementById("imgOriginal").addEventListener("click", () => exportImage("original"));
+document.getElementById("imgDeformed").addEventListener("click", () => exportImage("deformed"));
+document.getElementById("imgBoth").addEventListener("click", () => exportImage("both"));
+document.addEventListener("mousedown", e => {
+  if (!imgMenu.hidden && !imgMenu.contains(e.target) && e.target !== document.getElementById("exportImgBtn"))
+    imgMenu.hidden = true;
+});
 function invalidateResults(){ if (results){ results = null; refreshResultsUI(); } }
 function runSolve(){
   const res = solveFEA();
@@ -1242,6 +1589,71 @@ document.getElementById("dlBtn").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 
+// ---------- import a FlExtract-style .m file ----------
+function parseMatlab(text){
+  text = text.replace(/%[^\n]*/g, "");                 // drop comments
+  const matrix = name => {
+    const m = new RegExp(name + "\\s*=\\s*\\[([\\s\\S]*?)\\]").exec(text);
+    if (!m) return null;
+    return m[1].trim().split(/[;\n]+/).map(r => r.trim()).filter(r => r.length)
+             .map(r => r.split(/[\s,]+/).filter(s => s.length).map(Number));
+  };
+  const scalar = name => { const m = new RegExp(name + "\\s*=\\s*([-\\d.eE+]+)").exec(text); return m ? Number(m[1]) : null; };
+  return {X:matrix("X"), IX:matrix("IX"), mprop:matrix("mprop"), bound:matrix("bound"), loads:matrix("loads"), plotdof:scalar("plotdof")};
+}
+function importModel(p){
+  if (!p.X || !p.X.length || !p.IX){ alert("Could not read a valid X / IX matrix from that file."); return; }
+  if (nodes.length && !confirm("Replace the current structure with the imported file?")) return;
+  pushHistory();
+  nodes.length=0; elements.length=0; loads.length=0; bounds.length=0; guides.length=0;
+  const nu = [];                                       // imported row index (0-based) -> node uid
+  for (const row of p.X){ const u = uid(); nodes.push({uid:u, x:row[0]||0, y:row[1]||0}); nu.push(u); }
+  const mprop = (p.mprop && p.mprop.length) ? p.mprop : [[1,1]];
+  let skipped = 0;
+  for (const row of p.IX){
+    const a = nu[row[0]-1], b = nu[row[1]-1];
+    if (a == null || b == null){ skipped++; continue; }
+    const m = mprop[(row[2]||1)-1] || mprop[0];
+    elements.push({uid:uid(), a, b, E:(m&&m[0])??1, A:(m&&m[1])??1});
+  }
+  if (p.bound) for (const row of p.bound){ const u = nu[row[0]-1]; if (u!=null && (row[1]===1||row[1]===2)) bounds.push({node:u, dof:row[1], value:row[2]||0}); }
+  if (p.loads) for (const row of p.loads){ const u = nu[row[0]-1]; if (u!=null && (row[1]===1||row[1]===2) && row[2]) loads.push({node:u, dof:row[1], value:row[2]}); }
+  if (p.plotdof) document.getElementById("plotdof").value = p.plotdof;
+  selection=null; pendingNode=null; guideDraft=null; clearMulti(); invalidateResults();
+  renderInspector(); fitView(); draw();
+  setStatus(`Imported <b>${nodes.length}</b> nodes, <b>${elements.length}</b> elements` + (skipped?` (skipped ${skipped} bad element rows)`:""));
+}
+document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
+document.getElementById("importFile").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => { try { importModel(parseMatlab(String(reader.result))); } catch(err){ alert("Import failed: " + err.message); } };
+  reader.readAsText(f);
+  e.target.value = "";                                 // allow re-importing the same file
+});
+
+// ---------- unit selectors ----------
+function applyUnits(){
+  UNIT.E = document.getElementById("uE").value;
+  UNIT.A = document.getElementById("uA").value;
+  setUnitSystem(document.getElementById("uLength").value, document.getElementById("uForce").value);
+  try { localStorage.setItem("fembuilder-units", JSON.stringify(UNIT)); } catch(err){}
+  renderInspector();
+  if (results && !document.getElementById("resDock").hidden) openResults(resultsMode);
+  else if (results && document.getElementById("resModalBg").classList.contains("show")) openResults("modal");
+  draw();
+}
+["uLength","uForce","uE","uA"].forEach(id => document.getElementById(id).addEventListener("change", applyUnits));
+try {
+  const saved = JSON.parse(localStorage.getItem("fembuilder-units"));
+  if (saved){ Object.assign(UNIT, saved);
+    document.getElementById("uLength").value = UNIT.length;
+    document.getElementById("uForce").value = UNIT.force;
+    document.getElementById("uE").value = UNIT.E;
+    document.getElementById("uA").value = UNIT.A;
+  }
+} catch(err){}
+
 // ---------- misc ----------
 document.getElementById("clearBtn").addEventListener("click", () => {
   if (!confirm("Clear all nodes, elements, loads, BCs and reference geometry?")) return;
@@ -1253,6 +1665,7 @@ document.getElementById("grid").addEventListener("input", draw);
 // snapshot the state once when the user starts editing any inspector field, so a
 // whole edit of that field is a single undo step
 document.getElementById("inspector").addEventListener("focusin", e => {
+  if (e.target.classList && e.target.classList.contains("lblvis")) return;  // visual-only toggle
   if (/INPUT|SELECT/.test(e.target.tagName)) pushHistory();
 });
 
@@ -1272,7 +1685,21 @@ function applyLabelSize(px){
   draw();
 }
 lblSize.addEventListener("input", () => applyLabelSize(parseInt(lblSize.value) || 14));
-settingsBtn.addEventListener("click", e => { e.stopPropagation(); settingsPanel.hidden = !settingsPanel.hidden; });
+const showLabelsChk = document.getElementById("showLabels");
+function applyShowLabels(on){
+  showLabels = on; showLabelsChk.checked = on;
+  try { localStorage.setItem("fembuilder-showlabels", on ? "1" : "0"); } catch(e){}
+  draw();
+}
+showLabelsChk.addEventListener("change", () => applyShowLabels(showLabelsChk.checked));
+const showForcesChk = document.getElementById("showForces");
+function applyShowForces(on){
+  showForces = on; showForcesChk.checked = on;
+  try { localStorage.setItem("fembuilder-showforces", on ? "1" : "0"); } catch(e){}
+  draw();
+}
+showForcesChk.addEventListener("change", () => applyShowForces(showForcesChk.checked));
+settingsBtn.addEventListener("click", e => { e.stopPropagation(); imgMenu.hidden = true; settingsPanel.hidden = !settingsPanel.hidden; });
 document.addEventListener("mousedown", e => {
   if (!settingsPanel.hidden && !settingsPanel.contains(e.target) && e.target !== settingsBtn)
     settingsPanel.hidden = true;
@@ -1282,6 +1709,8 @@ document.getElementById("resetLabels").addEventListener("click", () => {
   draw();
 });
 try { const s = parseInt(localStorage.getItem("fembuilder-lblsize")); if (s) applyLabelSize(s); } catch(e){}
+try { const v = localStorage.getItem("fembuilder-showlabels"); if (v !== null) applyShowLabels(v === "1"); } catch(e){}
+try { const v = localStorage.getItem("fembuilder-showforces"); if (v !== null) applyShowForces(v === "1"); } catch(e){}
 
 // ---------- theme (light / dark) ----------
 function currentTheme(){

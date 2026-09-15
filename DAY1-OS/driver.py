@@ -10,11 +10,13 @@ from src.fea import Fea
 
 # Define the input files to analyse (standard FEM course Matlab input format).
 # Add or remove entries here to run the solver over several models in one go.
-input_files = [
-    'competition.m',
-    'competitionv2.m',
-    'group18v2.m',
-]
+# input_files = [
+#     'competition.m',
+#     'competitionv2.m',
+#     'group18v2.m',
+# ]
+
+input_files = ["my_mesh.m"]
 
 # Perform FEA on each input file in turn
 for input_file in input_files:

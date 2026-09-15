@@ -230,7 +230,8 @@ def euler_solve(X, IX, ne, neqn, mprop, bound, P_final, nincr, plotdof):
     # Forward-Euler incremental solution (slides "Pseudo-code (Euler Method)").
     #   P0 = 0, D0 = 0, dP = P_final / nincr
     #   for n = 1..nincr:  Kt(D^{n-1}) dD = dP ;  D^n = D^{n-1} + dD
-    D  = np.zeros((neqn, 1))
+    D  = np.zeros((neqn, 1))          # D0 = 0
+    P  = np.zeros((neqn, 1))          # accumulated total load, P0 = 0
     dP = P_final / nincr
 
     pdof   = int(plotdof) - 1          # input DOF is 1-indexed
@@ -238,6 +239,7 @@ def euler_solve(X, IX, ne, neqn, mprop, bound, P_final, nincr, plotdof):
     hist_P = [0.0]                     # applied-force history at plotdof
 
     for n in range(1, nincr + 1):
+        P = P + dP                                     # Pn = P^{n-1} + dP
         K = sps.csc_matrix((neqn, neqn))
         K = build_tangent(X, IX, ne, mprop, D, K)      # tangent from D^{n-1}
         K, rhs = enforce(K, dP.copy(), bound)          # BC on Kt and dP
@@ -246,7 +248,7 @@ def euler_solve(X, IX, ne, neqn, mprop, bound, P_final, nincr, plotdof):
         D  = D + dD                                    # accumulate
 
         hist_u.append(float(D[pdof].item()))
-        hist_P.append(n * float(P_final[pdof].item()) / nincr)
+        hist_P.append(float(P[pdof].item()))
 
     return D, (np.array(hist_u), np.array(hist_P))
 
