@@ -15,7 +15,7 @@ from src.plotloads       import plotloads
 # --- Preamble: constants and settings ------------------------------------
 # Kept here (not buried inside the functions) so the solver code stays general.
 DOF_PER_NODE       = 2      # Degrees of freedom per node (2D truss: u, v)
-STRESS_TOL         = 1e-9   # Below this |stress| a bar counts as unloaded
+STRESS_TOL         = 1e-6   # Below this |stress| a bar counts as unloaded
 PLOT_LINEWIDTH     = 3.5    # Line width for the deformed bars
 DISPLACEMENT_SCALE = 1.0    # Magnification applied to displacements when plotting
 PRINT_PRECISION    = 3      # Decimal places used when printing numpy arrays
@@ -62,12 +62,19 @@ class Fea:
         P = buildload(X, IX, ne, P, loads, mprop)    # Build global load vector
 
         Kmatr = buildstiff(X, IX, ne, mprop, Kmatr)  # Build global stiffness matrix
-        
+
+        # Keep the assembled system before boundary conditions are enforced,
+        # so the support reaction forces can be recovered afterwards.
+        K0 = Kmatr.copy()                            # pristine global stiffness
+        P0 = P.copy()                                # applied loads only
+
         Kmatr, P = enforce(Kmatr, P, bound)          # Enforce boundary conditions
-        
+
         D = get_displacements(Kmatr, P)                     # Solve for displacements
 
         strain, stress = recover(mprop, X, IX, D, ne, strain, stress)  # Calculate element stress and strain
+
+        R = get_reactions(K0, D, P0, bound)          # Reaction forces at the supports
 
         # Plot results
         PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)  # Plot structure
@@ -154,6 +161,41 @@ def get_displacements(K, P):
     displacement = np.linalg.solve(K.toarray(), P)
     print(f"This is displacement: {displacement}")
     return displacement
+
+def get_reactions(K0, D, P0, bound):
+    # Reaction forces at the supports.
+    # Using the ORIGINAL (un-enforced) stiffness and the applied load vector:
+    #     {R} = [K0]{D} - {P0}
+    # R is ~0 at the free DOFs (equilibrium already satisfied there) and equals
+    # the support force at each constrained DOF.
+    R = K0 @ D - P0
+
+    # Snap round-off to zero: reactions below 1e-6 x the largest |reaction| are
+    # numerically zero and printed as 0.
+    react_tol = 1e-6 * float(np.max(np.abs(R))) if R.size else 0.0
+
+    print("Reaction forces at constrained DOFs:")
+    sum_x = 0.0
+    sum_y = 0.0
+    for i in range(bound.shape[0]):
+        node      = int(bound[i, 0])
+        local_dof = int(bound[i, 1])
+        node_dofs  = np.array([DOF_PER_NODE*node-2, DOF_PER_NODE*node-1])
+        global_dof = node_dofs[local_dof-1]
+        comp = 'x' if local_dof == 1 else 'y'
+        r = float(R[global_dof])
+        if abs(r) <= react_tol: r = 0.0
+        print(f"  node {node} ({comp}): R = {r: .6g}")
+        if local_dof == 1: sum_x += r
+        else:              sum_y += r
+
+    # Global equilibrium: applied loads + reactions must cancel in each direction.
+    applied_x = float(P0[0::DOF_PER_NODE].sum())
+    applied_y = float(P0[1::DOF_PER_NODE].sum())
+    print(f"Equilibrium check: sum Fx = {sum_x + applied_x: .3e}, "
+          f"sum Fy = {sum_y + applied_y: .3e}  (should be ~0)")
+
+    return R
 
 def recover(mprop, X, IX, D, ne, strain, stress):
     for e in range(ne):
