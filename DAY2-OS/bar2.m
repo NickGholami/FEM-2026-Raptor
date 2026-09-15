@@ -44,6 +44,11 @@ plotdof = 5;
 Pfinal = 200;
 nincr = 20;
 
-% Solver choice:  1 = pure Euler,  2 = Euler + equilibrium-correction.
-% Leave this line out to run BOTH and overlay them for comparison.
-method = 2;
+% Newton-Raphson parameters (Exercises 2.3 and 2.4)
+imax = 100;          % max. equilibrium iterations per load increment
+eps_stop = 1e-8;     % stop when ||R|| <= eps_stop * ||P_final||
+
+% Solver choice:  1 = pure Euler,          2 = Euler + equilibrium-correction,
+%                 3 = Newton-Raphson,      4 = modified Newton-Raphson.
+% Leave this line out to run ALL of them and overlay them for comparison.
+// method = 4;
