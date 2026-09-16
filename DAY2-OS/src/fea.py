@@ -656,13 +656,8 @@ def PlotForceDisplacement(curves, analytical=None):
     if analytical is not None:
         ua, Pa = analytical
         plt.plot(ua, Pa, 'k-', linewidth=2, label='Analytical')
-    # Curves are drawn on top of each other, and converged methods give nearly identical
-    # results (NR and modified NR agree to ~1e-9). Later curves are therefore drawn
-    # progressively thinner, with alternating filled/open markers, so none is hidden.
-    for i, (label, (u, P)) in enumerate(curves):
-        plt.plot(u, P, linestyle='--', marker='o' if i % 2 == 0 else 's',
-                 fillstyle='full' if i % 2 == 0 else 'none',
-                 linewidth=3.0 - 0.6*i, markersize=5 + i, label=label)
+    for label, (u, P) in curves:
+        plt.plot(u, P, 'o--', linewidth=2, markersize=4, label=label)
     plt.xlabel('Displacement at plotdof,  u')
     plt.ylabel('Applied force,  P')
     plt.title('Force-displacement curve')
