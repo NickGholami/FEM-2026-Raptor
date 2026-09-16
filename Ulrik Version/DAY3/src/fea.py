@@ -134,7 +134,6 @@ def enforce(K, P, bound):
 
 def getdisplacements(K, P):
     D = np.linalg.solve(K.toarray(), P)
-    print(D)
     return D
 
 def recover(mprop, X, IX, D, ne, strain, stress):
@@ -151,8 +150,8 @@ def recover(mprop, X, IX, D, ne, strain, stress):
         matr = np.array([[1, 0, -1, 0],[0, 1, 0, -1], [-1, 0, 1, 0], [0, -1, 0, 1]])
         Bd =  (1 / (L0**2)) * matr @ de
         epsG = (B0.T + 1/2*Bd.T) @ de
-        stress[e] = Ee * epsG
         strain[e] = epsG
+        stress[e] = Ee * epsG
     return strain, stress
 
 def PlotStructure(X, IX, ne, neqn, bound, loads, D, stress):
