@@ -89,11 +89,6 @@ class Fea:
         PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)  # deformed shape
 
 
-# ====================================================================================================
-#  2. SHARED  -  load vector, boundary conditions, structure plot
-# ====================================================================================================
-
-
 def buildload(X, IX, ne, P, loads, mprop):
     # Assemble the global load vector P from the prescribed nodal loads.
     for i in range(loads.shape[0]):
@@ -183,11 +178,6 @@ def PlotStructure(X, IX, ne, neqn, bound, loads, D, stress):
         plt.show(block=True)
 
 
-# ====================================================================================================
-#  3. STIFFNESS  -  tangent stiffness matrix (k_nul + k_sigma + k_d)
-# ====================================================================================================
-
-
 def buildstiff(X, IX, ne, mprop, K, D):
     for e in range(ne):
         # Element nodes and property number (numbered from 1, arrays index from 0)
@@ -230,11 +220,6 @@ def buildstiff(X, IX, ne, mprop, K, D):
         
     print(f"this is K {K.toarray()}")
     return K
-
-
-# ====================================================================================================
-#  4. GEOMETRICALLY NON-LINEAR  -  internal force and recovery (linear material, Green strain)
-# ====================================================================================================
 
 
 def internal_force(X, IX, ne, mprop, D, neqn):
@@ -295,10 +280,6 @@ def recover_green(mprop, X, IX, D, ne, strain, stress):
     print(f"This is stress: {stress}")
     return strain, stress
 
-
-# ====================================================================================================
-#  5. SOLVER  -  Newton-Raphson equilibrium iterations
-# ====================================================================================================
 
 def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop, plotdof):
 
