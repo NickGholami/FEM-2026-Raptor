@@ -39,3 +39,4 @@ plotdof = 4;
 nincr = 20;          % load increments
 imax = 100;          % max. equilibrium iterations per increment
 eps_stop = 1e-8;    % stop when ||R|| <= eps_stop * ||P_final||
+spring_constant = 0.2
