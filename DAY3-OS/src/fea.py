@@ -51,41 +51,34 @@ class Fea:
             bound = self.bound; loads = self.loads; plotdof = self.plotdof
 
 
-        # Calculate problem size
-        neqn = X.shape[0] * DOF_PER_NODE   # Number of equations (DOFs)
-        ne = IX.shape[0]                   # Number of elements
+        # Problem size
+        neqn = X.shape[0] * DOF_PER_NODE   # number of degrees of freedom
+        ne = IX.shape[0]                   # number of elements
         print(f'Number of DOF {neqn} Number of elements {ne}')
 
-        # Initialize arrays
-        P = np.zeros((neqn,1))           # Force vector
-        stress = np.zeros((ne,1))        # Element stress vector
-
-        # Build the global load vector (this is the final / total load)
-        P = buildload(X, IX, ne, P, loads, mprop)
-
-        # ---- Geometrically non-linear truss (Green strain), Newton-Raphson ----
-        # 'nincr' (load increments) and 'imax' (max. equilibrium iterations) must be given
-        # in the input file; 'eps_stop' is optional and falls back to EPS_STOP_DEFAULT.
-        assert hasattr(self, 'nincr'), \
-               "Error in input file. Could not read variable nincr (load increments)."
-        assert hasattr(self, 'imax'), \
-               "Error in input file. Newton-Raphson needs 'imax' (max. equilibrium iterations)."
-        nincr    = int(self.nincr)
-        imax     = int(self.imax)
+        # Settings from the input file
+        nincr = int(self.nincr)            # number of load increments
+        imax = int(self.imax)              # max iterations per increment
         eps_stop = float(getattr(self, 'eps_stop', EPS_STOP_DEFAULT))
-        print(f'Non-linear analysis, {nincr} increments, Newton-Raphson (imax = {imax}, eps_stop = {eps_stop:g})')
+        print(f'Newton-Raphson: {nincr} increments, imax = {imax}, eps_stop = {eps_stop}')
 
-        D, hist_nr = newton_raphson(X, IX, ne, neqn, mprop, bound, P, nincr, imax, eps_stop, plotdof)
-        self.force_disp_nr = hist_nr
-        curves = [('Newton-Raphson', hist_nr)]   # (label, history) pairs for the plot
+        # Solve
+        P = buildload(X, IX, ne, np.zeros((neqn, 1)), loads, mprop)
+        D, u, Pplot = newton_raphson(X, IX, ne, neqn, mprop, bound, P, nincr, imax, eps_stop, plotdof)
+        stress = recover_stress(mprop, X, IX, D, ne)
 
-        stress = recover_stress(mprop, X, IX, D, ne, stress)
-        self.D = D; self.stress = stress
+        self.D = D
+        self.stress = stress
+        self.u = u
+        self.P = Pplot
 
-        # Krenk (3.19) reference curve, only meaningful for the 2-bar Von Mises truss
-        ana = analytical_vonmises(mprop, X, IX, hist_nr) if ne == 2 else None
-        PlotForceDisplacement(curves, ana)
-        PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)  # deformed shape
+        # Plots
+        if ne == 2:
+            ana = analytical_vonmises(mprop, X, IX, u)   # Krenk (3.19), 2-bar truss only
+        else:
+            ana = None
+        PlotForceDisplacement(u, Pplot, ana)
+        PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)
 
 
 def buildload(X, IX, ne, P, loads, mprop):
@@ -217,7 +210,7 @@ def buildstiff(X, IX, ne, mprop, K, D):
 
         K[np.ix_(edof, edof)] += ke  # Add element stiffness to global stiffness matrix
         
-    print(f"det her is K {K.toarray()}")
+    # print(f"det her is K {K.toarray()}")
     return K
 
 
@@ -250,9 +243,11 @@ def internal_force(X, IX, ne, mprop, D, neqn):
     return Rint
 
 
-def recover_stress(mprop, X, IX, D, ne, stress):
+def recover_stress(mprop, X, IX, D, ne):
     # Axial stress in each bar, for the tension/compression colours in PlotStructure.
     # Green strain written with the deformed length L:  eps_G = (L^2 - L0^2) / (2 L0^2)
+    stress = np.zeros((ne, 1))
+
     for e in range(ne):
         n1     = int(IX[e, 0])
         n2     = int(IX[e, 1])
@@ -266,7 +261,7 @@ def recover_stress(mprop, X, IX, D, ne, stress):
         L  = np.linalg.norm(p2 - p1)             # deformed length
 
         stress[e] = E * (L**2 - L0**2) / (2.0 * L0**2)
-
+    
     return stress
 
 
@@ -306,12 +301,12 @@ def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop
             dD = np.linalg.solve(K.toarray(), rhs)     # dDi = -Kt^-1 Ri
             D  = D + dD                                # Di+1 = Di + dDi
 
-        print(f'  NR increment {n:3d}: {i} iterations, ||R|| = {res:.3e}')
+        # print(f'  NR increment {n:3d}: {i} iterations, ||R|| = {res:.3e}')
 
         hist_u.append(float(D[pdof].item()))           # Dn = Di
         hist_P.append(float(P[pdof].item()))
 
-    return D, (np.array(hist_u), np.array(hist_P))
+    return D, np.array(hist_u), np.array(hist_P)
 
 
 # ====================================================================================================
@@ -319,7 +314,7 @@ def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop
 # ====================================================================================================
 
 
-def analytical_vonmises(mprop, X, IX, hist):
+def analytical_vonmises(mprop, X, IX, u_hist):
     # Analytical solution for the symmetric 2-bar Von Mises truss, Krenk (1993), Eq. (3.19):
     #
     #     P = 2 E A (a/L0)^3 [ D/a - 3/2 (D/a)^2 + 1/2 (D/a)^3 ]
@@ -339,23 +334,20 @@ def analytical_vonmises(mprop, X, IX, hist):
     L0 = np.sqrt(dx**2 + dy**2)
     a  = abs(dy)                      # height of the truss
 
-    u_fe  = hist[0]                                    # FE displacements at plotdof
-    D_max = max(2.1 * a, 1.05 * max(abs(u_fe)))        # cover FE range and the full curve
+    D_max = max(2.1 * a, 1.05 * max(abs(u_hist)))   # cover the FE range and the full curve
     D     = np.linspace(0.0, D_max, 400)
 
     x = D / a
     P = 2.0 * E * A * (a / L0)**3 * (x - 1.5 * x**2 + 0.5 * x**3)
     return D, P
 
-def PlotForceDisplacement(curves, analytical=None):
-    # Force-displacement curves at the plot DOF.
-    # `curves` is a list of (label, (u, P)) so several runs can be overlaid.
+def PlotForceDisplacement(u, P, analytical=None):
+    # Force-displacement curve at the plot DOF.
     plt.figure(2)
     if analytical is not None:
-        ua, Pa = analytical
-        plt.plot(ua, Pa, 'k-', linewidth=2, label='Analytical')
-    for label, (u, P) in curves:
-        plt.plot(u, P, 'o--', linewidth=2, markersize=4, label=label)
+        u_ana, P_ana = analytical
+        plt.plot(u_ana, P_ana, 'k-', linewidth=2, label='Analytical')
+    plt.plot(u, P, 'o--', linewidth=2, markersize=4, label='Newton-Raphson')
     plt.xlabel('Displacement at plotdof,  u')
     plt.ylabel('Applied force,  P')
     plt.title('Force-displacement curve')
