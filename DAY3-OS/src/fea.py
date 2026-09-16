@@ -58,7 +58,6 @@ class Fea:
 
         # Initialize arrays
         P = np.zeros((neqn,1))           # Force vector
-        strain = np.zeros((ne,1))        # Element strain vector
         stress = np.zeros((ne,1))        # Element stress vector
 
         # Build the global load vector (this is the final / total load)
@@ -80,7 +79,7 @@ class Fea:
         self.force_disp_nr = hist_nr
         curves = [('Newton-Raphson', hist_nr)]   # (label, history) pairs for the plot
 
-        strain, stress = recover_green(mprop, X, IX, D, ne, strain, stress)
+        stress = recover_stress(mprop, X, IX, D, ne, stress)
         self.D = D; self.stress = stress
 
         # Krenk (3.19) reference curve, only meaningful for the 2-bar Von Mises truss
@@ -218,13 +217,12 @@ def buildstiff(X, IX, ne, mprop, K, D):
 
         K[np.ix_(edof, edof)] += ke  # Add element stiffness to global stiffness matrix
         
-    print(f"this is K {K.toarray()}")
+    print(f"det her is K {K.toarray()}")
     return K
 
 
 def internal_force(X, IX, ne, mprop, D, neqn):
-    # Global INTERNAL force vector at displacement D:
-    #   {Rint} = sum_e ({B0} + {Bd}) N_G^e L0^e ,  with  N_G^e = A E eps_G   (linear material)
+
     Rint = np.zeros((neqn, 1))
     for e in range(ne):
         n1     = int(IX[e, 0])
@@ -252,33 +250,24 @@ def internal_force(X, IX, ne, mprop, D, neqn):
     return Rint
 
 
-def recover_green(mprop, X, IX, D, ne, strain, stress):
-    # Element Green strain and stress from the final displacement D (linear material).
+def recover_stress(mprop, X, IX, D, ne, stress):
+    # Axial stress in each bar, for the tension/compression colours in PlotStructure.
+    # Green strain written with the deformed length L:  eps_G = (L^2 - L0^2) / (2 L0^2)
     for e in range(ne):
         n1     = int(IX[e, 0])
         n2     = int(IX[e, 1])
         propno = int(IX[e, 2])
+        E      = mprop[propno-1, 0]
 
-        E = mprop[propno-1, 0]
-        A = mprop[propno-1, 1]
+        p1 = X[n1-1] + D[[2*n1-2, 2*n1-1], 0]    # deformed node positions
+        p2 = X[n2-1] + D[[2*n2-2, 2*n2-1], 0]
 
-        dx = X[n2-1, 0] - X[n1-1, 0]
-        dy = X[n2-1, 1] - X[n1-1, 1]
-        L0 = np.sqrt(dx**2 + dy**2)
+        L0 = np.linalg.norm(X[n2-1] - X[n1-1])   # undeformed length
+        L  = np.linalg.norm(p2 - p1)             # deformed length
 
-        B0   = (1.0 / L0**2) * np.array([[-dx], [-dy], [dx], [dy]])
-        Amat = np.array([[1,0,-1,0], [0,1,0,-1], [-1,0,1,0], [0,-1,0,1]], dtype=float)
-        edof = np.array([2*n1-2, 2*n1-1, 2*n2-2, 2*n2-1])
-        d    = D[edof]
+        stress[e] = E * (L**2 - L0**2) / (2.0 * L0**2)
 
-        B_d = (1.0 / L0**2) * (Amat @ d)
-
-        strain[e] = float(((B0 + 0.5*B_d).T @ d).item())   # Green strain
-        stress[e] = E * strain[e]
-
-    print(f"This is strain: {strain}")
-    print(f"This is stress: {stress}")
-    return strain, stress
+    return stress
 
 
 def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop, plotdof):
@@ -326,7 +315,7 @@ def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop
 
 
 # ====================================================================================================
-#  6. Plots
+#  6. Plots osv
 # ====================================================================================================
 
 
