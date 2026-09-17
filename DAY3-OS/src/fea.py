@@ -28,7 +28,7 @@ np.set_printoptions(precision=PRINT_PRECISION, suppress=True, linewidth=200)
 #  1. FEA CLASS  -  reads the input file and runs the geometrically non-linear analysis
 # ====================================================================================================
 class Fea:
-    def __init__(self, input_file):
+    def __init__(self, input_file, plot=True, spring_constant=None):
         # Read input in the standard Matlab format and convert to python variables
         with open(input_file, 'r') as file:
             inp = file.read()
@@ -51,42 +51,37 @@ class Fea:
             bound = self.bound; loads = self.loads; plotdof = self.plotdof
 
 
-        # Calculate problem size
-        neqn = X.shape[0] * DOF_PER_NODE   # Number of equations (DOFs)
-        ne = IX.shape[0]                   # Number of elements
+        # Problem size
+        neqn = X.shape[0] * DOF_PER_NODE   # number of degrees of freedom
+        ne = IX.shape[0]                   # number of elements
         print(f'Number of DOF {neqn} Number of elements {ne}')
 
-        # Initialize arrays
-        P = np.zeros((neqn,1))           # Force vector
-        strain = np.zeros((ne,1))        # Element strain vector
-        stress = np.zeros((ne,1))        # Element stress vector
-
-        # Build the global load vector (this is the final / total load)
-        P = buildload(X, IX, ne, P, loads, mprop)
-
-        # ---- Geometrically non-linear truss (Green strain), Newton-Raphson ----
-        # 'nincr' (load increments) and 'imax' (max. equilibrium iterations) must be given
-        # in the input file; 'eps_stop' is optional and falls back to EPS_STOP_DEFAULT.
-        assert hasattr(self, 'nincr'), \
-               "Error in input file. Could not read variable nincr (load increments)."
-        assert hasattr(self, 'imax'), \
-               "Error in input file. Newton-Raphson needs 'imax' (max. equilibrium iterations)."
-        nincr    = int(self.nincr)
-        imax     = int(self.imax)
+        # Settings from the input file
+        nincr = int(self.nincr)            # number of load increments
+        if spring_constant is None:                                      # spring to ground at the plotted DOF
+            spring_constant = float(getattr(self, 'spring_constant', 0.0))
+        imax = int(self.imax)              # max iterations per increment
         eps_stop = float(getattr(self, 'eps_stop', EPS_STOP_DEFAULT))
-        print(f'Non-linear analysis, {nincr} increments, Newton-Raphson (imax = {imax}, eps_stop = {eps_stop:g})')
+        print(f'Newton-Raphson: {nincr} increments, imax = {imax}, eps_stop = {eps_stop}')
 
-        D, hist_nr = newton_raphson(X, IX, ne, neqn, mprop, bound, P, nincr, imax, eps_stop, plotdof)
-        self.force_disp_nr = hist_nr
-        curves = [('Newton-Raphson', hist_nr)]   # (label, history) pairs for the plot
+        # Solve
+        P = buildload(X, IX, ne, np.zeros((neqn, 1)), loads, mprop)
+        D, u, Pplot = newton_raphson(X, IX, ne, neqn, mprop, bound, P, nincr, imax, eps_stop, plotdof, spring_constant)
+        stress = recover_stress(mprop, X, IX, D, ne)
 
-        strain, stress = recover_green(mprop, X, IX, D, ne, strain, stress)
-        self.D = D; self.stress = stress
+        self.D = D
+        self.stress = stress
+        self.u = u
+        self.P = Pplot
 
-        # Krenk (3.19) reference curve, only meaningful for the 2-bar Von Mises truss
-        ana = analytical_vonmises(mprop, X, IX, hist_nr) if ne == 2 else None
-        PlotForceDisplacement(curves, ana)
-        PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)  # deformed shape
+        # Plots
+        if plot:
+            if ne == 2:
+                ana = analytical_vonmises(mprop, X, IX, u, spring_constant)   # Krenk (3.20), 2-bar truss only
+            else:
+                ana = None
+            PlotForceDisplacement(u, Pplot, ana)
+            PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)
 
 
 def buildload(X, IX, ne, P, loads, mprop):
@@ -178,7 +173,7 @@ def PlotStructure(X, IX, ne, neqn, bound, loads, D, stress):
         plt.show(block=True)
 
 
-def buildstiff(X, IX, ne, mprop, K, D):
+def buildstiff(X, IX, ne, mprop, K, D, pdof, spring_constant):
     for e in range(ne):
         # Element nodes and property number (numbered from 1, arrays index from 0)
         n1     = int(IX[e, 0])   # node 1
@@ -217,14 +212,16 @@ def buildstiff(X, IX, ne, mprop, K, D):
         ke = k_nul_e + k_sigma_e + k_d_e
 
         K[np.ix_(edof, edof)] += ke  # Add element stiffness to global stiffness matrix
+
         
-    print(f"this is K {K.toarray()}")
+    # print(f"det her is K {K.toarray()}")
+
+    K[pdof, pdof] += spring_constant
     return K
 
 
 def internal_force(X, IX, ne, mprop, D, neqn):
-    # Global INTERNAL force vector at displacement D:
-    #   {Rint} = sum_e ({B0} + {Bd}) N_G^e L0^e ,  with  N_G^e = A E eps_G   (linear material)
+
     Rint = np.zeros((neqn, 1))
     for e in range(ne):
         n1     = int(IX[e, 0])
@@ -252,36 +249,29 @@ def internal_force(X, IX, ne, mprop, D, neqn):
     return Rint
 
 
-def recover_green(mprop, X, IX, D, ne, strain, stress):
-    # Element Green strain and stress from the final displacement D (linear material).
+def recover_stress(mprop, X, IX, D, ne):
+    # Axial stress in each bar, for the tension/compression colours in PlotStructure.
+    # Green strain written with the deformed length L:  eps_G = (L^2 - L0^2) / (2 L0^2)
+    stress = np.zeros((ne, 1))
+
     for e in range(ne):
         n1     = int(IX[e, 0])
         n2     = int(IX[e, 1])
         propno = int(IX[e, 2])
+        E      = mprop[propno-1, 0]
 
-        E = mprop[propno-1, 0]
-        A = mprop[propno-1, 1]
+        p1 = X[n1-1] + D[[2*n1-2, 2*n1-1], 0]    # deformed node positions
+        p2 = X[n2-1] + D[[2*n2-2, 2*n2-1], 0]
 
-        dx = X[n2-1, 0] - X[n1-1, 0]
-        dy = X[n2-1, 1] - X[n1-1, 1]
-        L0 = np.sqrt(dx**2 + dy**2)
+        L0 = np.linalg.norm(X[n2-1] - X[n1-1])   # undeformed length
+        L  = np.linalg.norm(p2 - p1)             # deformed length
 
-        B0   = (1.0 / L0**2) * np.array([[-dx], [-dy], [dx], [dy]])
-        Amat = np.array([[1,0,-1,0], [0,1,0,-1], [-1,0,1,0], [0,-1,0,1]], dtype=float)
-        edof = np.array([2*n1-2, 2*n1-1, 2*n2-2, 2*n2-1])
-        d    = D[edof]
-
-        B_d = (1.0 / L0**2) * (Amat @ d)
-
-        strain[e] = float(((B0 + 0.5*B_d).T @ d).item())   # Green strain
-        stress[e] = E * strain[e]
-
-    print(f"This is strain: {strain}")
-    print(f"This is stress: {stress}")
-    return strain, stress
+        stress[e] = E * (L**2 - L0**2) / (2.0 * L0**2)
+    
+    return stress
 
 
-def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop, plotdof):
+def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop, plotdof, spring_constant):
 
     D  = np.zeros((neqn, 1))          # D0 = 0
     P  = np.zeros((neqn, 1))          # accumulated total load, P0 = 0
@@ -295,15 +285,18 @@ def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop
     hist_u = [0.0]
     hist_P = [0.0]
 
+
     for n in range(1, nincr + 1):
         P = P + dP                                     # Pn = P^{n-1} + dP
                                                        # D0n = D^{n-1}  (D just carries over)
         for i in range(imax + 1):
             
             R = internal_force(X, IX, ne, mprop, D, neqn) - P   # Ri = Rint(Di) - Pn
+            R[pdof] += spring_constant * D[pdof]               # spring force
 
            
             R[fixed] = 0.0                             # BC on R: no residual at supports
+            
             res = np.linalg.norm(R)
             if res <= tol:                             # converged -> equilibrium found
                 break
@@ -312,25 +305,25 @@ def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop
                 break
 
             K = sps.csc_matrix((neqn, neqn))
-            K = buildstiff(X, IX, ne, mprop, K, D)  # Kt(Di)
+            K = buildstiff(X, IX, ne, mprop, K, D, pdof, spring_constant)  # Kt(Di)
             K, rhs = enforce(K, -R, bound)             # BC on Kt and -Ri
             dD = np.linalg.solve(K.toarray(), rhs)     # dDi = -Kt^-1 Ri
             D  = D + dD                                # Di+1 = Di + dDi
 
-        print(f'  NR increment {n:3d}: {i} iterations, ||R|| = {res:.3e}')
+        # print(f'  NR increment {n:3d}: {i} iterations, ||R|| = {res:.3e}')
 
         hist_u.append(float(D[pdof].item()))           # Dn = Di
         hist_P.append(float(P[pdof].item()))
 
-    return D, (np.array(hist_u), np.array(hist_P))
+    return D, np.array(hist_u), np.array(hist_P)
 
 
 # ====================================================================================================
-#  6. Plots
+#  6. Plots osv
 # ====================================================================================================
 
 
-def analytical_vonmises(mprop, X, IX, hist):
+def analytical_vonmises(mprop, X, IX, u_hist, spring_constant=0.0):
     # Analytical solution for the symmetric 2-bar Von Mises truss, Krenk (1993), Eq. (3.19):
     #
     #     P = 2 E A (a/L0)^3 [ D/a - 3/2 (D/a)^2 + 1/2 (D/a)^3 ]
@@ -350,33 +343,37 @@ def analytical_vonmises(mprop, X, IX, hist):
     L0 = np.sqrt(dx**2 + dy**2)
     a  = abs(dy)                      # height of the truss
 
-    u_fe  = hist[0]                                    # FE displacements at plotdof
-    D_max = max(2.1 * a, 1.05 * max(abs(u_fe)))        # cover FE range and the full curve
+    D_max = max(2.1 * a, 1.05 * max(abs(u_hist)))   # cover the FE range and the full curve
     D     = np.linspace(0.0, D_max, 400)
 
     x = D / a
-    P = 2.0 * E * A * (a / L0)**3 * (x - 1.5 * x**2 + 0.5 * x**3)
+    P = 2.0 * E * A * (a / L0)**3 * (x - 1.5 * x**2 + 0.5 * x**3) + spring_constant * D
     return D, P
 
-def PlotForceDisplacement(curves, analytical=None):
-    # Force-displacement curves at the plot DOF.
-    # `curves` is a list of (label, (u, P)) so several runs can be overlaid.
+def PlotForceDisplacement(u, P, analytical=None, label='Newton-Raphson'):
+    # Force-displacement curve at the plot DOF.
+    # Dots = Newton-Raphson, solid line = analytical. Call it again to overlay another curve.
     plt.figure(2)
+    line, = plt.plot(u, P, 'o--', linewidth=1.5, markersize=4, label=label)
     if analytical is not None:
-        ua, Pa = analytical
-        plt.plot(ua, Pa, 'k-', linewidth=2, label='Analytical')
-    for label, (u, P) in curves:
-        plt.plot(u, P, 'o--', linewidth=2, markersize=4, label=label)
+        u_ana, P_ana = analytical
+        plt.plot(u_ana, P_ana, '-', linewidth=1.5, color=line.get_color())
     plt.xlabel('Displacement at plotdof,  u')
     plt.ylabel('Applied force,  P')
-    plt.title('Force-displacement curve')
+    plt.title('Force-displacement curve (dots = Newton-Raphson, line = analytical)')
     plt.grid(True)
     plt.legend()
 
 
 if __name__ == '__main__':
-    # Allow running this file directly (▶ Run) for debugging.
-    # Change to the project root so the input file path resolves.
+    # Allow running this file directly (> Run). Change to the project root so
+    # the input file path resolves.
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    Fea('exercise3_1.m')
+    # Exercise 3.2: one curve per spring stiffness. A single value gives a plain run.
+    for k in [0.0, 0.1, 0.4, 0.8]:
+        fea = Fea('exercise3_2.m', plot=False, spring_constant=k)
+        ana = analytical_vonmises(fea.mprop, fea.X, fea.IX, fea.u, k)
+        PlotForceDisplacement(fea.u, fea.P, ana, label=f'k = {k}')
+
+    plt.show()
