@@ -73,10 +73,20 @@ class Fea:
                 D = D + delta_D
 
                 strain, stress = recover(mprop, X, IX, D, ne, strain, stress)  # Calculate element stress and strain
+            u_history.append(D[3, 0])
+            P_history.append(P[3, 0])
         print(f'strain: {strain}, stress:{stress}')
+
+        E = mprop[0,0]
+        A = mprop[0,1]
+        a = abs(X[1, 1] - X[0, 1])
+        L0 = np.linalg.norm(X[1] - X[0])
+
+        plotcomparison(u_history, P_history, E, A, a, L0)
 
         # Plot results
         PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)  # Plot structure
+
         
 
 # %%
@@ -236,4 +246,27 @@ def PlotStructure(X, IX, ne, neqn, bound, loads, D, stress):
 #         plotloads(loads, Xnew, dsup)
 #         plt.axis('equal')
 #         plt.show(block=True)
+
+def plotcomparison(u_history, P_history, E, A, a, L0):
+    # Mange forskydninger giver en glat analytisk kurve
+    u_max = max(2.5 * a, 1.1 * max(u_history))
+    u_ref = np.linspace(0.0, u_max, 500)
+
+    # Analytisk last for hver forskydning
+    q = u_ref / a
+    P_ref = 2 * E * A * (a / L0)**3 * (
+        q - 1.5 * q**2 + 0.5 * q**3
+    )
+
+    # Tegn analytisk kurve og numeriske resultater
+    plt.figure()
+    plt.plot(u_ref, P_ref, "k-", label="Analytisk løsning")
+    plt.plot(u_history, P_history, "ro", label="Newton-Raphson")
+
+    plt.xlabel("Lodret forskydning af midterknuden, D [m]")
+    plt.ylabel("Last, P")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 # %%
