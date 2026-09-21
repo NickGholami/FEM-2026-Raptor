@@ -4,6 +4,7 @@ import numpy             as np
 import scipy             as sp
 import scipy.sparse      as sps
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import math
 import re
 from scipy.sparse.linalg import spsolve
@@ -44,19 +45,31 @@ class Fea:
         P = np.zeros((neqn,1))           # Force vector
         D = np.zeros((neqn,1))           # Displacement vector
         R = np.zeros((neqn,1))           # Residual vector
+        R_int = np.zeros((neqn, 1))      # Internal nodal forces
         strain = np.zeros((ne,1))        # Element strain vector
         stress = np.zeros((ne,1))        # Element stress vector
+        N = np.zeros((ne, 1))            # Element forces vector
 
         # Calculate displacements
         P = buildload(X, IX, ne, P, loads, mprop)    # Build global load vector
+
+        R_ext = P.copy()                             # Before Enforce changes P. P/R_ext is needed for calculating residuals later
 
         Kmatr = buildstiff(X, IX, ne, mprop, Kmatr)  # Build global stiffness matrix
         
         Kmatr, P = enforce(Kmatr, P, bound)          # Enforce boundary conditions
 
-        D = getdisplacements(Kmatr, P)               # Solve for displacements
+        D = solve_displacements(Kmatr, P)            # Solve for displacments
         
-        strain, stress = recover(mprop, X, IX, D, ne, strain, stress)  # Calculate element stress and strain
+        strain, stress, N, R_int = recover(mprop, X, IX, D, ne, strain, stress, N, R_int)  # Calculate element stress and strain
+
+        R = R_int - R_ext
+
+        print(f'Displacement vector: \n {D}')
+
+        print(f'Element forces: \n {N}')
+
+        print(f'Residual vector: \n {R}')
 
         # Plot results
         PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)  # Plot structure
@@ -64,147 +77,115 @@ class Fea:
 # %%
 
 def buildload(X, IX, ne, P, loads, mprop):
+    ndof = 2
     for i in range(loads.shape[0]):
-        n, d, pe = loads[i]
-        P[int(2 * n - 2 + d - 1)] = pe
+        dof = int((loads[i,0] - 1) * ndof + (loads[i,1] - 1)) 
+        P[dof, 0] += loads[i,2]
+#        print("Debug stop")
     return P
 
 def buildstiff(X, IX, ne, mprop, K):
     for e in range(ne):
-        n1, n2, mat_id = IX[ e ].astype( int )
-        xe = np.array([ X[n1 - 1, 0], X[n1 - 1, 1], X[n2 - 1, 0], X[n2 - 1, 1]])
-        dx = xe[2] - xe[0]
-        dy = xe[3] - xe[1]
-        L0 = math.sqrt(dx**2 + dy**2)
+        n1, n2, mat_id = IX[e].astype(int)
         Ee = mprop[mat_id - 1, 0]
         Ae = mprop[mat_id - 1, 1]
-        B0 = 1 / (L0**2) * np.array([[-dx, -dy, dx, dy]]).T
-        ke = Ee * Ae * L0 * B0 @ B0.T
-        edofT = np.array([n1 * 2 -1, n1 * 2, n2 * 2 -1, n2 * 2])
-        # print("edofT:", edofT)
-        # print("ke:", ke)
-        K[ np.ix_( edofT - 1, edofT - 1 ) ] += ke
-    #print(K.toarray())        
+        dofs = np.array([n1 * 2 - 2, n1 * 2 - 1, n2 * 2 - 2, n2 * 2 - 1])
+        x1 = X[n1 - 1, 0]
+        x2 = X[n2 - 1, 0]
+        y1 = X[n1 - 1, 1]
+        y2 = X[n2 - 1, 1]
+        dx = x2 - x1
+        dy = y2 - y1
+        L0 = np.sqrt(dx**2 + dy**2)
+        B0 = 1 / L0**2 * np.array([[-dx, -dy, dx, dy]]).T
+        ke = Ae * Ee * L0 * (B0 @ B0.T)
+
+        # Dobbelt loop:
+        for i in range(len(dofs)):
+            for j in range(len(dofs)):
+                K[dofs[i], dofs[j]] += ke[i,j]
+#        print("Debug stop")
     return K
 
 def enforce(K, P, bound):
-
+    ndof = 2
     for i in range(bound.shape[0]):
+        dof = int((bound[i,0] - 1) * ndof + (bound[i,1] - 1))
 
-        n, dof, disp = bound[i]
-
-        idof = int(2 * n - 2 + dof)
-
-        P[:, 0] -= K[:, idof - 1].toarray().flatten() * disp
-
-        K[idof - 1, :] = 0
-        K[:, idof - 1] = 0
-        K[idof - 1, idof - 1] = 1
-
-        P[idof - 1, 0] = disp
+        u = bound[i,2]
+        P-= K[:, [dof]].toarray() * u # If displacement is not zero p. 40-41
+        K[dof,:] = 0 # Zero the row
+        K[:,dof] = 0 # Zero the column
+        K[dof,dof] = 1 # Diagonal to 1
+        P[dof,0] = u # Prescribed displacement
+#        print("Debug stop")
     return K, P
 
-def getdisplacements(K, P):
+def solve_displacements(K,P):
     D = np.linalg.solve(K.toarray(), P)
-    print(D)
     return D
 
-def recover(mprop, X, IX, D, ne, strain, stress):
+def recover(mprop, X, IX, D, ne, strain, stress, N, R_int):
     for e in range(ne):
         n1, n2, mat_id = IX[e].astype(int)
-        xe = np.array([ X[n1 - 1, 0], X[n1 - 1, 1], X[n2 - 1, 0], X[n2 - 1, 1]])
-        dx = xe[2] - xe[0]
-        dy = xe[3] - xe[1]
-        L0 = math.sqrt(dx**2 + dy**2)
         Ee = mprop[mat_id - 1, 0]
         Ae = mprop[mat_id - 1, 1]
-        B0 = 1 / (L0**2) * np.array([[-dx, -dy, dx, dy]]).T
-        de = D[np.array([2*n1 - 2, 2*n1 - 1, 2*n2 - 2, 2*n2 - 1]), 0]
-        stress[e] = Ee * B0.T @ de
-        strain[e] = B0.T @ de
-    print(f'strain: {strain}, stress: {stress}')
-    return strain, stress
+        dofs = np.array([n1 * 2 - 2, n1 * 2 - 1, n2 * 2 - 2, n2 * 2 - 1])
+        x1 = X[n1 - 1, 0]
+        x2 = X[n2 - 1, 0]
+        y1 = X[n1 - 1, 1]
+        y2 = X[n2 - 1, 1]
+        dx = x2 - x1
+        dy = y2 - y1
+        L0 = np.sqrt(dx**2 + dy**2)
+        B0 = 1 / L0**2 * np.array([[-dx, -dy, dx, dy]]).T
+        d = D[dofs]
+        strain[e,0] = (d.T @ B0).item()
+        stress[e, 0] = Ee * strain[e,0]
+        N[e, 0] = Ae * stress[e, 0]
+        R_int[dofs] += B0 * N[e, 0] * L0
+#        print('Debug Stop')
+    return strain, stress, N, R_int 
 
 def PlotStructure(X, IX, ne, neqn, bound, loads, D, stress):
-    from matplotlib.lines import Line2D
+        # Plot the deformed and undeformed structure
 
-    # Plot settings
-    plt.figure(1)
-    plt.clf()
-    lw = 3.5
-    scale = 1.0
+        # Plot settings
+        plt.figure(1)
+        plt.clf()
+        lw = 3.5        # Linewidth for plotting bars
+        scale = 1.0     # Displacement scaling
+        tol = 1e-5
+        for e in range(ne):
+            xx = X[IX[e, 0:2].astype(int)-1, 0]
+            yy = X[IX[e, 0:2].astype(int)-1, 1]
+            # Plot undeformed solution
+            plt.plot(xx, yy, 'k:', linewidth=1)
+            # Get displacements in x and y
+            n1, n2 = IX[e, 0:2].astype(int)
+            edof = np.array([2*n1, 2*n1 + 1, 2*n2, 2*n2 + 1])
+            xx_def = xx + scale*D[edof[0:4:2]-2,0]
+            yy_def = yy + scale*D[edof[1:4:2]-2,0]
+            sigma = stress[e,0]
+            if sigma > tol:
+                colour = 'blue'
+            elif sigma < - tol:
+                colour = 'red'
+            else:
+                colour = 'green'
+            plt.plot(xx_def, yy_def, colour, linewidth=lw)
 
-    # Tolerance for deciding whether a bar is unloaded
-    max_stress = np.max(np.abs(stress))
-    if max_stress > 0:
-        stress_tol = 1e-6 * max_stress
-    else:
-        stress_tol = 1e-12
+        legend_lines = [
+            Line2D([0], [0], color = 'black', linestyle = ':', label = 'undeformed'),
+            Line2D([0], [0], color = 'blue', linestyle= '-', label = 'tension'),
+            Line2D([0], [0], color = 'red', linestyle= '-', label = 'compression'),
+            Line2D([0], [0], color = 'green', linestyle= '-', label = 'unloaded'),
+        ]
 
-    # Plot elements
-    for e in range(ne):
-        xx = X[IX[e, 0:2].astype(int) - 1, 0]
-        yy = X[IX[e, 0:2].astype(int) - 1, 1]
-        plt.plot(xx, yy, "k:", linewidth=1)
+        plt.legend(handles = legend_lines, loc="upper right")
 
-        # Get element displacement
-        n1, n2 = IX[e, 0:2].astype(int)
-        edof = np.array([2*n1, 2*n1 + 1, 2*n2, 2*n2 + 1])
-        xx_def = xx + scale * D[edof[0:4:2] - 2, 0]
-        yy_def = yy + scale * D[edof[1:4:2] - 2, 0]
-
-        # Choose color based on stress
-        sigma = float(stress[e, 0])
-        if sigma > stress_tol:
-            color = "blue"       # Tension
-        elif sigma < -stress_tol:
-            color = "red"        # Compression
-        else:
-            color = "green"      # Essentially zero stress
-        plt.plot(xx_def, yy_def, color=color, linewidth=lw)
-
-    # Legend
-    legend_elements = [
-        Line2D([0], [0], color="black", linestyle=":", linewidth=1, label="Undeformed"),
-        Line2D([0], [0], color="blue", linewidth=lw, label="Tension"),
-        Line2D([0], [0], color="red", linewidth=lw, label="Compression"),
-        Line2D([0], [0], color="green", linewidth=lw, label="No tension/compression")
-    ]
-    plt.legend(handles=legend_elements, loc="upper right")
-
-    # Plot supports and loads
-    Xnew, dsup = plotsupports(X, D, neqn, bound)
-    plotloads(loads, Xnew, dsup)
-    plt.axis("equal")
-    plt.show(block=True)
-
-
-
-# def PlotStructure(X, IX, ne, neqn, bound, loads, D, stress):
-#         # Plot the deformed and undeformed structure
-
-#         # Plot settings
-#         plt.figure(1)
-#         lw = 3.5        # Linewidth for plotting bars
-#         scale = 1.0     # Displacement scaling
-
-#         for e in range(ne):
-#             xx = X[IX[e, 0:2].astype(int)-1, 0]
-#             yy = X[IX[e, 0:2].astype(int)-1, 1]
-#             # Plot undeformed solution
-#             plt.plot(xx, yy, 'k:', linewidth=1)
-#             # Get displacements in x and y
-#             n1, n2 = IX[e, 0:2].astype(int)
-#             edof = np.array([2*n1, 2*n1 + 1, 2*n2, 2*n2 + 1])
-#             xx_def = xx + scale*D[edof[0:4:2]-2,0]
-#             yy_def = yy + scale*D[edof[1:4:2]-2,0]
-#             plt.plot(xx_def, yy_def, 'b', linewidth=lw)
-
-#         plt.legend(["Undeformed", "Deformed"], loc="upper right")
-
-#         # Plot supports and loads 
-#         Xnew, dsup = plotsupports(X, D, neqn, bound)
-#         plotloads(loads, Xnew, dsup)
-#         plt.axis('equal')
-#         plt.show(block=True)
-# %%
+        # Plot supports and loads 
+        Xnew, dsup = plotsupports(X, D, neqn, bound)
+        plotloads(loads, Xnew, dsup)
+        plt.axis('equal')
+        plt.show(block=True)
