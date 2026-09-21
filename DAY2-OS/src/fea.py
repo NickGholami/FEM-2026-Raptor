@@ -46,16 +46,25 @@ class Fea:
         with open(input_file, 'r') as file:
             inp = file.read()
 
-            matches = re.findall(r'(?:\n|^)\s*(\w+)\s*=\s*\[\s*([\s\S]*?)\s*\]', inp, re.DOTALL)
-            for name,content in matches:
-                vals = content.strip().split('\n')
-                vals = np.array([[float(val) for val in row.strip().split()] for row in vals])
-                setattr(self, name, vals)     # this is for storing a variable in a class
-
-            # Scalars: integers or floats, e.g. 'nincr = 20;' or 'eps_stop = 1e-8;'
+            # Scalars first, e.g. 'nincr = 18;' or 'Pfinal = 100;', so that the
+            # matrices below can use them by name (the mesh files do that in 'loads').
             matches = re.findall(r'(?:\n|^)\s*(\w+)\s*=\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:;|\n)', inp, re.DOTALL)
             for name,content in matches:
                 setattr(self, name, float(content.strip()))
+
+            def number(token):
+                # A matrix entry is either a number or the name of a scalar read above
+                sign = -1.0 if token.startswith('-') else 1.0
+                token = token.lstrip('+-')
+                if hasattr(self, token):
+                    return sign * float(getattr(self, token))
+                return sign * float(token)
+
+            matches = re.findall(r'(?:\n|^)\s*(\w+)\s*=\s*\[\s*([\s\S]*?)\s*\]', inp, re.DOTALL)
+            for name,content in matches:
+                vals = content.strip().split('\n')
+                vals = np.array([[number(val) for val in row.strip().split()] for row in vals])
+                setattr(self, name, vals)     # this is for storing a variable in a class
 
             for requiredvar in ("X", "IX", "mprop", "bound", "loads", "plotdof"):
                 assert hasattr(self, requiredvar), \
@@ -132,7 +141,8 @@ class Fea:
             strain, stress = recover_nonlinear(mprop, X, IX, D, ne, strain, stress)
             self.D = D; self.stress = stress
 
-            ana = analytical_curve(mprop, X, IX, ne, curves[-1][1])  # reference curve
+
+            ana = analytical_curve(mprop, X, IX, ne, curves[-1][1]) if ne == 2 else None
             PlotForceDisplacement(curves, ana)
             PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)  # deformed shape
 
@@ -323,7 +333,7 @@ def recover(mprop, X, IX, D, ne, strain, stress):
 # ====================================================================================================
 #  4. DAY 2 (shared)  -  non-linear rubber material, used by ALL Day 2 solvers
 # ====================================================================================================
-#  mprop row = [ A  c1  c2  c3  c4 ]
+#  mprop row = [ E  A  c1  c2  c3  c4 ]   (E unused by the rubber model)
 #  The elastic modulus E is replaced by the tangent modulus Et(eps).
 #  sigma, tangent_modulus, build_tangent, recover_nonlinear
 # ====================================================================================================
@@ -350,7 +360,7 @@ def build_tangent(X, IX, ne, mprop, D, K):
         n2     = int(IX[e, 1])
         propno = int(IX[e, 2])
 
-        A, c1, c2, c3, c4 = mprop[propno-1]   # rubber property row
+        E, A, c1, c2, c3, c4 = mprop[propno-1]   # rubber property row
 
         dx = X[n2-1, 0] - X[n1-1, 0]
         dy = X[n2-1, 1] - X[n1-1, 1]
@@ -374,7 +384,7 @@ def recover_nonlinear(mprop, X, IX, D, ne, strain, stress):
         n2     = int(IX[e, 1])
         propno = int(IX[e, 2])
 
-        A, c1, c2, c3, c4 = mprop[propno-1]
+        E, A, c1, c2, c3, c4 = mprop[propno-1]
 
         dx = X[n2-1, 0] - X[n1-1, 0]
         dy = X[n2-1, 1] - X[n1-1, 1]
@@ -445,7 +455,7 @@ def internal_force(X, IX, ne, mprop, D, neqn):
         n2     = int(IX[e, 1])
         propno = int(IX[e, 2])
 
-        A, c1, c2, c3, c4 = mprop[propno-1]
+        E, A, c1, c2, c3, c4 = mprop[propno-1]
 
         dx = X[n2-1, 0] - X[n1-1, 0]
         dy = X[n2-1, 1] - X[n1-1, 1]
@@ -632,7 +642,7 @@ def analytical_curve(mprop, X, IX, ne, hist):
     # L_total is the summed element length (= 3 for the two 1.5-long bars).
     # NB: this direct comparison is only meaningful for a straight uni-axial
     # bar; for a general truss the curves are not expected to match.
-    A, c1, c2, c3, c4 = mprop[0]
+    E, A, c1, c2, c3, c4 = mprop[0]
 
     L_total = 0.0
     for e in range(ne):
@@ -674,4 +684,4 @@ if __name__ == '__main__':
     # Change to the project root so the input file path resolves.
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    Fea('bar2.m')
+    Fea('TrussExercise2_2026.m')
