@@ -26,5 +26,5 @@ bound = [ 1  1  0.0
 
 % Control Parameters
 Pfinal = 200;
-nincr = 20;
+nincr = 100;
 plotdof = 5;

@@ -1,14 +1,12 @@
-# %%
-
 import numpy             as np
 import scipy             as sp
 import scipy.sparse      as sps
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import math
 import re
 from scipy.sparse.linalg import spsolve
 
-# %%
 from src.plotsupports    import plotsupports
 from src.plotloads       import plotloads
 
@@ -45,8 +43,10 @@ class Fea:
         P = np.zeros((neqn,1))           # Force vector
         D = np.zeros((neqn,1))           # Displacement vector
         R = np.zeros((neqn,1))           # Residual vector
+        R_int = np.zeros((neqn, 1))      # Internal nodal forces
         strain = np.zeros((ne,1))        # Element strain vector
         stress = np.zeros((ne,1))        # Element stress vector
+        N = np.zeros((ne, 1))            # Element forces vector
 
         # Calculate displacements
         u_history = [0.0]
@@ -61,8 +61,8 @@ class Fea:
             P = P + delta_P_vec
             Kmatr = sps.csc_matrix((neqn, neqn))
             Kmatr = buildstiff(X, IX, ne, mprop, Kmatr, strain)
-            Kmatr, delta_P_bc = enforce(Kmatr, delta_P_vec.copy(), bound)
-            delta_D = getdisplacements(Kmatr, delta_P_bc)
+            Kmatr, delta_P_bc = enforce(Kmatr, delta_P_vec, bound)
+            delta_D = solve_displacements(Kmatr, delta_P_bc)
             D = D + delta_D
             strain, stress = recover(mprop, X, IX, D, ne, strain, stress)  # Calculate element stress and strain
             u_history.append(D[int(plotdof) - 1, 0])
@@ -99,7 +99,6 @@ def plotforce(L, A, c1, c2, c3, c4, Fmax):
 
     return displacements, forces
 
-# %%
 
 def plotcomparison(u_history, P_history, nincr, L, A, c1, c2, c3, c4, Fmax):
     u_ref, P_ref = plotforce(L, A, c1, c2, c3, c4, Fmax)
@@ -113,13 +112,13 @@ def plotcomparison(u_history, P_history, nincr, L, A, c1, c2, c3, c4, Fmax):
     plt.legend()
     plt.show()
 
-# %%
-
 
 def buildload(X, IX, ne, P, loads, mprop):
+    ndof = 2
     for i in range(loads.shape[0]):
-        n, d, pe = loads[i]
-        P[int(2 * n - 2 + d - 1)] = pe
+        dof = int((loads[i,0] - 1) * ndof + (loads[i,1] - 1)) 
+        P[dof, 0] += loads[i,2]
+#        print("Debug stop")
     return P
 
 
@@ -160,25 +159,21 @@ def buildstiff(X, IX, ne, mprop, K, strain):
     return K
 
 def enforce(K, P, bound):
-
+    ndof = 2
     for i in range(bound.shape[0]):
+        dof = int((bound[i,0] - 1) * ndof + (bound[i,1] - 1))
 
-        n, dof, disp = bound[i]
-
-        idof = int(2 * n - 2 + dof)
-
-        P[:, 0] -= K[:, idof - 1].toarray().flatten() * disp
-
-        K[idof - 1, :] = 0
-        K[:, idof - 1] = 0
-        K[idof - 1, idof - 1] = 1
-
-        P[idof - 1, 0] = disp
+        u = bound[i,2]
+        P-= K[:, [dof]].toarray() * u # If displacement is not zero p. 40-41
+        K[dof,:] = 0 # Zero the row
+        K[:,dof] = 0 # Zero the column
+        K[dof,dof] = 1 # Diagonal to 1
+        P[dof,0] = u # Prescribed displacement
+#        print("Debug stop")
     return K, P
 
-def getdisplacements(K, P):
+def solve_displacements(K,P):
     D = np.linalg.solve(K.toarray(), P)
-    print(D)
     return D
 
 def recover(mprop, X, IX, D, ne, strain, stress):
@@ -201,58 +196,45 @@ def recover(mprop, X, IX, D, ne, strain, stress):
         strain[e, 0] = eps
     return strain, stress
 
-
-
 def PlotStructure(X, IX, ne, neqn, bound, loads, D, stress):
-    from matplotlib.lines import Line2D
+        # Plot the deformed and undeformed structure
 
-    # Plot settings
-    plt.figure(1)
-    plt.clf()
-    lw = 3.5
-    scale = 1.0
+        # Plot settings
+        plt.figure(1)
+        plt.clf()
+        lw = 3.5        # Linewidth for plotting bars
+        scale = 1.0     # Displacement scaling
+        tol = 1e-5
+        for e in range(ne):
+            xx = X[IX[e, 0:2].astype(int)-1, 0]
+            yy = X[IX[e, 0:2].astype(int)-1, 1]
+            # Plot undeformed solution
+            plt.plot(xx, yy, 'k:', linewidth=1)
+            # Get displacements in x and y
+            n1, n2 = IX[e, 0:2].astype(int)
+            edof = np.array([2*n1, 2*n1 + 1, 2*n2, 2*n2 + 1])
+            xx_def = xx + scale*D[edof[0:4:2]-2,0]
+            yy_def = yy + scale*D[edof[1:4:2]-2,0]
+            sigma = stress[e,0]
+            if sigma > tol:
+                colour = 'blue'
+            elif sigma < - tol:
+                colour = 'red'
+            else:
+                colour = 'green'
+            plt.plot(xx_def, yy_def, colour, linewidth=lw)
 
-    # Tolerance for deciding whether a bar is unloaded
-    max_stress = np.max(np.abs(stress))
-    if max_stress > 0:
-        stress_tol = 1e-6 * max_stress
-    else:
-        stress_tol = 1e-12
+        legend_lines = [
+            Line2D([0], [0], color = 'black', linestyle = ':', label = 'undeformed'),
+            Line2D([0], [0], color = 'blue', linestyle= '-', label = 'tension'),
+            Line2D([0], [0], color = 'red', linestyle= '-', label = 'compression'),
+            Line2D([0], [0], color = 'green', linestyle= '-', label = 'unloaded'),
+        ]
 
-    # Plot elements
-    for e in range(ne):
-        xx = X[IX[e, 0:2].astype(int) - 1, 0]
-        yy = X[IX[e, 0:2].astype(int) - 1, 1]
-        plt.plot(xx, yy, "k:", linewidth=1)
+        plt.legend(handles = legend_lines, loc="upper right")
 
-        # Get element displacement
-        n1, n2 = IX[e, 0:2].astype(int)
-        edof = np.array([2*n1, 2*n1 + 1, 2*n2, 2*n2 + 1])
-        xx_def = xx + scale * D[edof[0:4:2] - 2, 0]
-        yy_def = yy + scale * D[edof[1:4:2] - 2, 0]
-
-        # Choose color based on stress
-        sigma = float(stress[e, 0])
-        if sigma > stress_tol:
-            color = "blue"       # Tension
-        elif sigma < -stress_tol:
-            color = "red"        # Compression
-        else:
-            color = "green"      # Essentially zero stress
-        plt.plot(xx_def, yy_def, color=color, linewidth=lw)
-
-    # Legend
-    legend_elements = [
-        Line2D([0], [0], color="black", linestyle=":", linewidth=1, label="Undeformed"),
-        Line2D([0], [0], color="blue", linewidth=lw, label="Tension"),
-        Line2D([0], [0], color="red", linewidth=lw, label="Compression"),
-        Line2D([0], [0], color="green", linewidth=lw, label="No tension/compression")
-    ]
-    plt.legend(handles=legend_elements, loc="upper right")
-
-    # Plot supports and loads
-    Xnew, dsup = plotsupports(X, D, neqn, bound)
-    plotloads(loads, Xnew, dsup)
-    plt.axis("equal")
-    plt.show(block=True)
-# %%
+        # Plot supports and loads 
+        Xnew, dsup = plotsupports(X, D, neqn, bound)
+        plotloads(loads, Xnew, dsup)
+        plt.axis('equal')
+        plt.show(block=True)
