@@ -1,14 +1,12 @@
-# %%
-
 import numpy             as np
 import scipy             as sp
 import scipy.sparse      as sps
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import math
 import re
 from scipy.sparse.linalg import spsolve
 
-# %%
 from src.plotsupports    import plotsupports
 from src.plotloads       import plotloads
 
@@ -45,227 +43,194 @@ class Fea:
         P = np.zeros((neqn,1))           # Force vector
         D = np.zeros((neqn,1))           # Displacement vector
         R = np.zeros((neqn,1))           # Residual vector
+        R_int = np.zeros((neqn, 1))      # Internal nodal forces
         strain = np.zeros((ne,1))        # Element strain vector
         stress = np.zeros((ne,1))        # Element stress vector
+        N = np.zeros((ne, 1))            # Element forces vector
 
-        # Calculate displacements
-        u_history = [0.0]
-        P_history = [0.0]
-        Pfinal = self.Pfinal
+
+        u_history = [0] # Initialize for plot
+        P_history = [0] # Initialize for plot
         nincr = int(self.nincr)
-        DeltaP = Pfinal / nincr
-        delta_P_vec = buildload(X, IX, ne, P.copy(), loads, mprop) * DeltaP
+        Pfinal = self.Pfinal
+        deltaP = Pfinal / nincr
+        load_dof = 2 * (int(loads[0,0]) - 1) + int(loads[0,1])
+        deltaP_vec = buildload(X, IX, ne, P.copy(), loads, mprop) * deltaP
+        eps_stop = 1e-8
 
-        tol = 10**-6
-        max_iter = 100
-
-        # Newton Rahpson loop
-        for n in range(nincr):
-            P = P + delta_P_vec
-            for i in range(max_iter):
+        # Newton Rhapson loop
+        for i in range(nincr):
+            P = P + deltaP_vec
+            for iteration in range(int(self.i_max)):
+                R_int = np.zeros((neqn, 1))
+                strain, stress, N, R_int = recover(mprop, X, IX, D, ne, strain, stress, N, R_int)
+                R = R_int - P
                 Kmatr = sps.csc_matrix((neqn, neqn))
-                Kmatr, Rint = buildstiff(X, IX, ne, mprop, Kmatr, strain)
-                R = Rint - P
-                Kmatr, RBC = enforce(Kmatr, R.copy(), bound)
-                if np.linalg.norm(-RBC) < tol * np.linalg.norm(nincr * delta_P_vec):
+                Kmatr = buildstiff(X, IX, ne, mprop, Kmatr, strain)
+                Kmatr, rhs_BC = enforce(Kmatr, - R, bound) # Not same order as Psydo code, because enforce also calculates rhs_BC
+                if np.linalg.norm(rhs_BC) <= eps_stop * abs(Pfinal):
                     break
+                deltaD = solve_displacements(Kmatr, rhs_BC)    
+                D = D + deltaD
+            else:
+                raise RuntimeError(f"Did not converge within max iterations")
 
-                delta_D = getdisplacements(Kmatr, - RBC)
-                D = D + delta_D
-
-                strain, stress = recover(mprop, X, IX, D, ne, strain, stress)  # Calculate element stress and strain
-                
             u_history.append(D[int(plotdof) - 1, 0])
-            P_history.append(P[int(plotdof) - 1, 0])
+            P_history.append(P[load_dof - 1, 0])
+        print(D)
 
-        self.u_history = u_history
-        self.P_history = P_history
-        c1, c2, c3, c4, A = mprop[0]
-        L = np.linalg.norm(X[-1] - X[0])
-        plotcomparison(u_history, P_history, nincr, L, A, c1, c2, c3, c4, Pfinal)
+        # Plot results
+        PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)  # Plot structure
+        plot_comparison(X, mprop, u_history, P_history, nincr)
 
-# %%
 
-def plotforce(L, A, c1, c2, c3, c4, Fmax):
-    u = 0.0
-    du = 10**-4
-    displacements = []
-    forces = []
 
-    while True:
+def plot_comparison(X, mprop, u_history, P_history, nincr):
+    L = np.linalg.norm(X[-1] - X[0])
+    c1, c2, c3, c4, A = mprop[0]
+    u_ref = np.linspace(0, u_history[-1], 200)
+    P_ref = []
+
+    for u in u_ref:
         eps = u / L
-        lam = 1 + c4 * eps
-        sigma = (c1 * (lam - lam**-2)
-                 + c2 * (1 - lam**-3)
-                 + c3 * (1 - 3*lam + lam**3 - 2*lam**-3 + 3*lam**-2))
-        F = A * sigma
-        displacements.append(u)
-        forces.append(F)
+        sigma, _ = material(eps, c1, c2, c3, c4)
+        P_ref.append(A * sigma)
 
-        if F >= Fmax:
-            break
-        
-        u += du
-
-    return displacements, forces
-
-# %%
-
-def plotcomparison(u_history, P_history, nincr, L, A, c1, c2, c3, c4, Fmax):
-    u_ref, P_ref = plotforce(L, A, c1, c2, c3, c4, Fmax)
-
-    plt.figure()
-    plt.plot(u_ref, P_ref, "k-", label="Reference")
-    plt.plot(u_history, P_history, "o-", label=f"Newton Rhapson, {nincr} load increments")
-    plt.xlabel("Displacement, u")
-    plt.ylabel("Force, P")
+    # Sammenlign reference og Euler
+    plt.figure(2)
+    plt.clf()
+    plt.plot(u_ref, P_ref, "black", label="Reference")
+    plt.plot(u_history, P_history, "red", label= f"Newton Rhapson - {nincr} load increments")
+    plt.xlabel("Displacement u")
+    plt.ylabel("Force P")
     plt.grid(True)
     plt.legend()
     plt.show()
+    
 
-# %%
-
-
-def buildload(X, IX, ne, P, loads, mprop):
-    for i in range(loads.shape[0]):
-        n, d, pe = loads[i]
-        P[int(2 * n - 2 + d - 1)] = pe
-    return P
 
 
 def material(eps, c1, c2, c3, c4):
     lam = 1 + c4 * eps
 
     if lam <= 0:
-        raise ValueError("Material model only works for lambda > 0.")
+        raise ValueError("Material model only works for lam > 0")
 
-    sigma = (c1 * (lam - lam**-2)
-             + c2 * (1 - lam**-3)
-             + c3 * (1 - 3*lam + lam**3 - 2*lam**-3 + 3*lam**-2))
-
-    Et = c4 * (c1 * (1 + 2*lam**-3)
-               + 3*c2 * lam**-4
-               + 3*c3 * (-1 + lam**2 - 2*lam**-3 + 2*lam**-4))
+    sigma = c1 * (lam - lam**-2) + c2 * (1 - lam**-3) + c3 * (1 - 3 * lam + lam**3 - 2 * lam**-3 + 3 * lam**-2)
+    Et = c4 * ( c1 * (1 + 2 * lam**-3) + 3 * c2 * lam**-4 + 3 * c3 * (-1 + lam**2 - 2 * lam**-3 + 2 * lam**-4) )
 
     return sigma, Et
 
+def buildload(X, IX, ne, P, loads, mprop):
+    ndof = 2
+    for i in range(loads.shape[0]):
+        dof = int((loads[i,0] - 1) * ndof + (loads[i,1] - 1)) 
+        P[dof, 0] += loads[i,2]
+#        print("Debug stop")
+    return P
+
 def buildstiff(X, IX, ne, mprop, K, strain):
-    Rint = np.zeros((K.shape[0], 1)) # Internal forces
-    for e in range(ne):
-        n1, n2, mat_id = IX[ e ].astype( int )
-        xe = np.array([ X[n1 - 1, 0], X[n1 - 1, 1], X[n2 - 1, 0], X[n2 - 1, 1]])
-        dx = xe[2] - xe[0]
-        dy = xe[3] - xe[1]
-        L0 = math.sqrt(dx**2 + dy**2)
-        c1, c2, c3, c4, Ae = mprop[mat_id - 1]
-
-        eps = strain[e,0]
-        sigma, Et = material(eps, c1, c2, c3, c4)
-    
-        B0 = 1 / (L0**2) * np.array([[-dx, -dy, dx, dy]]).T
-        ke = Et * Ae * L0 * B0 @ B0.T
-        re = sigma * Ae * L0 * B0
-        edofT = np.array([n1 * 2 -1, n1 * 2, n2 * 2 -1, n2 * 2])
-
-        K[ np.ix_( edofT - 1, edofT - 1 ) ] += ke
-        Rint[edofT - 1, 0] += re[:, 0]
-   
-    return K, Rint
-
-def enforce(K, P, bound):
-
-    for i in range(bound.shape[0]):
-
-        n, dof, disp = bound[i]
-
-        idof = int(2 * n - 2 + dof)
-
-        P[:, 0] -= K[:, idof - 1].toarray().flatten() * disp
-
-        K[idof - 1, :] = 0
-        K[:, idof - 1] = 0
-        K[idof - 1, idof - 1] = 1
-
-        P[idof - 1, 0] = disp
-    return K, P
-
-def getdisplacements(K, P):
-    D = np.linalg.solve(K.toarray(), P)
-    print(D)
-    return D
-
-def recover(mprop, X, IX, D, ne, strain, stress):
     for e in range(ne):
         n1, n2, mat_id = IX[e].astype(int)
-        xe = np.array([ X[n1 - 1, 0], X[n1 - 1, 1], X[n2 - 1, 0], X[n2 - 1, 1]])
-        dx = xe[2] - xe[0]
-        dy = xe[3] - xe[1]
-        L0 = math.sqrt(dx**2 + dy**2)
-        edof = 2*n1 - 2, 2*n1 - 1, 2*n2 - 2, 2*n2 - 1
-        c1, c2, c3, c4, _ = mprop[mat_id - 1]
+        c1, c2, c3, c4, Ae = mprop[mat_id - 1]
+        dofs = np.array([n1 * 2 - 2, n1 * 2 - 1, n2 * 2 - 2, n2 * 2 - 1])
+        x1 = X[n1 - 1, 0]
+        x2 = X[n2 - 1, 0]
+        y1 = X[n1 - 1, 1]
+        y2 = X[n2 - 1, 1]
+        dx = x2 - x1
+        dy = y2 - y1
+        L0 = np.sqrt(dx**2 + dy**2)
+        B0 = 1 / L0**2 * np.array([[-dx, -dy, dx, dy]]).T
+        eps = strain[e, 0]
+        _, Et = material(eps, c1, c2, c3, c4 )
+        ke = Ae * Et * L0 * (B0 @ B0.T)
 
-        B0 = 1 / (L0**2) * np.array([[-dx, -dy, dx, dy]]).T
-        de = D[edof, 0]
+        # Dobbelt loop:
+        for i in range(len(dofs)):
+            for j in range(len(dofs)):
+                K[dofs[i], dofs[j]] += ke[i,j]
+#        print("Debug stop")
+    return K
 
-        eps = (B0.T @ de).item()
-        sigma, _ = material(eps, c1, c2, c3, c4)
+def enforce(K, P, bound):
+    ndof = 2
+    for i in range(bound.shape[0]):
+        dof = int((bound[i,0] - 1) * ndof + (bound[i,1] - 1))
 
-        stress[e, 0] = sigma
-        strain[e, 0] = eps
-    return strain, stress
+        u = bound[i,2]
+        P-= K[:, [dof]].toarray() * u # If displacement is not zero p. 40-41
+        K[dof,:] = 0 # Zero the row
+        K[:,dof] = 0 # Zero the column
+        K[dof,dof] = 1 # Diagonal to 1
+        P[dof,0] = u # Prescribed displacement
+#        print("Debug stop")
+    return K, P
 
+def solve_displacements(K,P):
+    D = np.linalg.solve(K.toarray(), P)
+    return D
 
+def recover(mprop, X, IX, D, ne, strain, stress, N, R_int):
+    for e in range(ne):
+        n1, n2, mat_id = IX[e].astype(int)
+        c1, c2, c3, c4, Ae = mprop[mat_id - 1]
+        dofs = np.array([n1 * 2 - 2, n1 * 2 - 1, n2 * 2 - 2, n2 * 2 - 1])
+        x1 = X[n1 - 1, 0]
+        x2 = X[n2 - 1, 0]
+        y1 = X[n1 - 1, 1]
+        y2 = X[n2 - 1, 1]
+        dx = x2 - x1
+        dy = y2 - y1
+        L0 = np.sqrt(dx**2 + dy**2)
+        B0 = 1 / L0**2 * np.array([[-dx, -dy, dx, dy]]).T
+        d = D[dofs]
+        strain[e,0] = (d.T @ B0).item()
+        stress[e, 0], _ = material(strain[e,0], c1, c2, c3, c4)
+        N[e, 0] = Ae * stress[e, 0]
+        R_int[dofs] += B0 * N[e, 0] * L0
+#        print('Debug Stop')
+    return strain, stress, N, R_int 
 
 def PlotStructure(X, IX, ne, neqn, bound, loads, D, stress):
-    from matplotlib.lines import Line2D
+        # Plot the deformed and undeformed structure
 
-    # Plot settings
-    plt.figure(1)
-    plt.clf()
-    lw = 3.5
-    scale = 1.0
+        # Plot settings
+        plt.figure(1)
+        plt.clf()
+        lw = 3.5        # Linewidth for plotting bars
+        scale = 1.0     # Displacement scaling
+        tol = 1e-5
+        for e in range(ne):
+            xx = X[IX[e, 0:2].astype(int)-1, 0]
+            yy = X[IX[e, 0:2].astype(int)-1, 1]
+            # Plot undeformed solution
+            plt.plot(xx, yy, 'k:', linewidth=1)
+            # Get displacements in x and y
+            n1, n2 = IX[e, 0:2].astype(int)
+            edof = np.array([2*n1, 2*n1 + 1, 2*n2, 2*n2 + 1])
+            xx_def = xx + scale*D[edof[0:4:2]-2,0]
+            yy_def = yy + scale*D[edof[1:4:2]-2,0]
+            sigma = stress[e,0]
+            if sigma > tol:
+                colour = 'blue'
+            elif sigma < - tol:
+                colour = 'red'
+            else:
+                colour = 'green'
+            plt.plot(xx_def, yy_def, colour, linewidth=lw)
 
-    # Tolerance for deciding whether a bar is unloaded
-    max_stress = np.max(np.abs(stress))
-    if max_stress > 0:
-        stress_tol = 1e-6 * max_stress
-    else:
-        stress_tol = 1e-12
+        legend_lines = [
+            Line2D([0], [0], color = 'black', linestyle = ':', label = 'undeformed'),
+            Line2D([0], [0], color = 'blue', linestyle= '-', label = 'tension'),
+            Line2D([0], [0], color = 'red', linestyle= '-', label = 'compression'),
+            Line2D([0], [0], color = 'green', linestyle= '-', label = 'unloaded'),
+        ]
 
-    # Plot elements
-    for e in range(ne):
-        xx = X[IX[e, 0:2].astype(int) - 1, 0]
-        yy = X[IX[e, 0:2].astype(int) - 1, 1]
-        plt.plot(xx, yy, "k:", linewidth=1)
+        plt.legend(handles = legend_lines, loc="upper right")
 
-        # Get element displacement
-        n1, n2 = IX[e, 0:2].astype(int)
-        edof = np.array([2*n1, 2*n1 + 1, 2*n2, 2*n2 + 1])
-        xx_def = xx + scale * D[edof[0:4:2] - 2, 0]
-        yy_def = yy + scale * D[edof[1:4:2] - 2, 0]
-
-        # Choose color based on stress
-        sigma = float(stress[e, 0])
-        if sigma > stress_tol:
-            color = "blue"       # Tension
-        elif sigma < -stress_tol:
-            color = "red"        # Compression
-        else:
-            color = "green"      # Essentially zero stress
-        plt.plot(xx_def, yy_def, color=color, linewidth=lw)
-
-    # Legend
-    legend_elements = [
-        Line2D([0], [0], color="black", linestyle=":", linewidth=1, label="Undeformed"),
-        Line2D([0], [0], color="blue", linewidth=lw, label="Tension"),
-        Line2D([0], [0], color="red", linewidth=lw, label="Compression"),
-        Line2D([0], [0], color="green", linewidth=lw, label="No tension/compression")
-    ]
-    plt.legend(handles=legend_elements, loc="upper right")
-
-    # Plot supports and loads
-    Xnew, dsup = plotsupports(X, D, neqn, bound)
-    plotloads(loads, Xnew, dsup)
-    plt.axis("equal")
-    plt.show(block=True)
-# %%
+        # Plot supports and loads 
+        Xnew, dsup = plotsupports(X, D, neqn, bound)
+        plotloads(loads, Xnew, dsup)
+        plt.axis('equal')
+        plt.show(block=True)
