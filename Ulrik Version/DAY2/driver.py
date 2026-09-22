@@ -8,7 +8,7 @@ os.chdir(os.path.dirname(__file__))
 print ("Current working dir : %s" % os.getcwd())
 
 # import FEA code module
-from src.fea_NR_Old import Fea
+from src.fea_NR import Fea
 
 # Define input file (the standard FEM course Matlab input format)
 input_file = 'Exercise2.3.m'
