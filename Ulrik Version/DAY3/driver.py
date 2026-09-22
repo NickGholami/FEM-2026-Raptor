@@ -15,4 +15,6 @@ input_file = 'Exercise3_1.m'
 # Perform FEA
 fea = Fea(input_file)
 
+
+
 # %%
