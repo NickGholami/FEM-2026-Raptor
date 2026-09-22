@@ -1,13 +1,13 @@
-
+# %% Solver  -  run this cell first, then the exercise cells at the bottom
 import numpy             as np
 import scipy.sparse      as sps
 import matplotlib.pyplot as plt
 import re
 import os, sys
 
-# Make the 'src' package importable whether this file is run via driver.py
-# or directly (▶ Run on src/fea.py). Adds the project root to the path.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Project root (DAY3-OS): holds the input files. Added to the path so 'src' is importable.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
 from src.plotsupports    import plotsupports
 from src.plotloads       import plotloads
@@ -44,48 +44,47 @@ class Fea:
             for name,content in matches:
                 setattr(self, name, float(content.strip()))
 
-            for requiredvar in ("X", "IX", "mprop", "bound", "loads", "plotdof"):
+            for requiredvar in ("X", "IX", "mprop", "bound", "loads", "plotdof", "nincr", "imax"):
                 assert hasattr(self, requiredvar), \
                        f"Error in input file. Could not read variable {requiredvar}."
-            X = self.X; IX = self.IX; mprop = self.mprop
-            bound = self.bound; loads = self.loads; plotdof = self.plotdof
 
+            # Optional settings fall back to defaults; a spring_constant passed
+            # as an argument overrides the one in the input file.
+            eps_stop = float(getattr(self, 'eps_stop', EPS_STOP_DEFAULT))
+            if spring_constant is None:
+                spring_constant = float(getattr(self, 'spring_constant', 0.0))
+
+        X       = self.X
+        IX      = self.IX
+        mprop   = self.mprop
+        bound   = self.bound
+        loads   = self.loads
+        plotdof = self.plotdof
+        nincr   = int(self.nincr)
+        imax    = int(self.imax)
 
         # Problem size
         neqn = X.shape[0] * DOF_PER_NODE   # number of degrees of freedom
         ne = IX.shape[0]                   # number of elements
         print(f'Number of DOF {neqn} Number of elements {ne}')
 
-        # Settings from the input file
-        nincr = int(self.nincr)            # number of load increments
-        if spring_constant is None:                                      # spring to ground at the plotted DOF
-            spring_constant = float(getattr(self, 'spring_constant', 0.0))
-        imax = int(self.imax)              # max iterations per increment
-        eps_stop = float(getattr(self, 'eps_stop', EPS_STOP_DEFAULT))
-        print(f'Newton-Raphson: {nincr} increments, imax = {imax}, eps_stop = {eps_stop}')
-
         # Solve
-        P = buildload(X, IX, ne, np.zeros((neqn, 1)), loads, mprop)
-        D, u, Pplot = newton_raphson(X, IX, ne, neqn, mprop, bound, P, nincr, imax, eps_stop, plotdof, spring_constant)
+        P_final = buildload(loads, neqn)      # total load vector, applied in nincr steps
+        D, u, Pplot = newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop, plotdof, spring_constant)
         stress = recover_stress(mprop, X, IX, D, ne)
 
-        self.D = D
-        self.stress = stress
-        self.u = u
-        self.P = Pplot
+        
+        self.D, self.u, self.P, self.stress = D, u, Pplot, stress
 
-        # Plots
+        # Plots (analytical Krenk curve only exists for the 2-bar truss)
         if plot:
-            if ne == 2:
-                ana = analytical_vonmises(mprop, X, IX, u, spring_constant)   # Krenk (3.20), 2-bar truss only
-            else:
-                ana = None
-            PlotForceDisplacement(u, Pplot, ana)
+            PlotForceDisplacement(u, Pplot, analytical_vonmises(mprop, X, IX, u, spring_constant) if ne == 2 else None)
             PlotStructure(X, IX, ne, neqn, bound, loads, D, stress)
 
 
-def buildload(X, IX, ne, P, loads, mprop):
-    # Assemble the global load vector P from the prescribed nodal loads.
+def buildload(loads, neqn):
+    # Assemble the global load vector P (shape (neqn, 1)) from the prescribed nodal loads.
+    P = np.zeros((neqn, 1))
     for i in range(loads.shape[0]):
         node      = int(loads[i, 0])   # node the load is applied to
         local_dof = int(loads[i, 1])   # local DOF at that node (1 = x, 2 = y)
@@ -272,19 +271,25 @@ def recover_stress(mprop, X, IX, D, ne):
 
 
 def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop, plotdof, spring_constant):
+    print(f'Newton-Raphson: {nincr} increments, imax = {imax}, eps_stop = {eps_stop}')
 
-    D  = np.zeros((neqn, 1))          # D0 = 0
-    P  = np.zeros((neqn, 1))          # accumulated total load, P0 = 0
-    dP = P_final / nincr
-    tol = eps_stop * np.linalg.norm(P_final)   # absolute stop tolerance
+  
+    # State (vectors, shape (neqn, 1))
+    D      = np.zeros((neqn, 1))                   # displacements, D0 = 0
+    P      = np.zeros((neqn, 1))                   # accumulated load, P0 = 0
+    dP     = P_final / nincr                       # load added per increment
 
-    # Global DOFs with prescribed displacements (0-indexed), for enforcing BC on R
-    fixed = [DOF_PER_NODE*int(node) - 2 + int(local_dof) - 1 for node, local_dof, _ in bound]
+    # Convergence
+    tol    = eps_stop * np.linalg.norm(P_final)    # absolute stop tolerance on ||R||
 
-    pdof   = int(plotdof) - 1
-    hist_u = [0.0]
-    hist_P = [0.0]
+    # DOF bookkeeping (0-indexed)
+    fixed  = [DOF_PER_NODE*int(node) - 2 + int(local_dof) - 1 for node, local_dof, _ in bound]      # supported DOFs, residual set to 0 here
+    pdof   = int(plotdof) - 1                      # DOF for the force-displacement curve
 
+    # 
+    hist_u = [0.0]                                 # displacement at pdof
+    hist_P = [0.0]                                 # load at pdof
+  
 
     for n in range(1, nincr + 1):
         P = P + dP                                     # Pn = P^{n-1} + dP
@@ -318,22 +323,13 @@ def newton_raphson(X, IX, ne, neqn, mprop, bound, P_final, nincr, imax, eps_stop
     return D, np.array(hist_u), np.array(hist_P)
 
 
-# ====================================================================================================
+# ----
 #  6. Plots osv
-# ====================================================================================================
+# ----
 
 
 def analytical_vonmises(mprop, X, IX, u_hist, spring_constant=0.0):
-    # Analytical solution for the symmetric 2-bar Von Mises truss, Krenk (1993), Eq. (3.19):
-    #
-    #     P = 2 E A (a/L0)^3 [ D/a - 3/2 (D/a)^2 + 1/2 (D/a)^3 ]
-    #
-    #   a  = undeformed height of the centre node relative to the supports
-    #   L0 = undeformed bar length
-    #   D  = vertical displacement of the centre node, positive towards the supports
-    #
-    # The curve is swept far enough to cover the whole snap-through path
-    # (D/a = 0 -> 2 is the fully inverted truss). Valid for a << L0.
+    # Analytical solution for the symmetric 2-bar Von Mises truss
     E = mprop[0, 0]
     A = mprop[0, 1]
 
@@ -352,7 +348,7 @@ def analytical_vonmises(mprop, X, IX, u_hist, spring_constant=0.0):
 
 def PlotForceDisplacement(u, P, analytical=None, label='Newton-Raphson'):
     # Force-displacement curve at the plot DOF.
-    # Dots = Newton-Raphson, solid line = analytical. Call it again to overlay another curve.
+    # Dots = Newton-Raphson, solid line = analytical
     plt.figure(2)
     line, = plt.plot(u, P, 'o--', linewidth=1.5, markersize=4, label=label)
     if analytical is not None:
@@ -365,15 +361,69 @@ def PlotForceDisplacement(u, P, analytical=None, label='Newton-Raphson'):
     plt.legend()
 
 
-if __name__ == '__main__':
-    # Allow running this file directly (> Run). Change to the project root so
-    # the input file path resolves.
-    os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# The exercise cells are guarded so they only run from this file, not when driver.py imports it.
 
-    # Exercise 3.2: one curve per spring stiffness. A single value gives a plain run.
+# %% Exercise 3.1  -  Von Mises truss, P = 0.03 in 20 increments, compared with Krenk (3.19). No spring.
+if __name__ == '__main__':
+    Fea(os.path.join(ROOT, 'exercise3_1.m'), spring_constant=0.0)
+
+
+# %% Exercise 3.2  -  spring at the centre node, one curve per k, compared with Krenk (3.20)
+if __name__ == '__main__':
     for k in [0.0, 0.1, 0.4, 0.8]:
-        fea = Fea('exercise3_2.m', plot=False, spring_constant=k)
+        fea = Fea(os.path.join(ROOT, 'exercise3_2.m'), plot=False, spring_constant=k)
         ana = analytical_vonmises(fea.mprop, fea.X, fea.IX, fea.u, k)
         PlotForceDisplacement(fea.u, fea.P, ana, label=f'k = {k}')
-
     plt.show()
+# %% Exercise 3.3  
+if __name__ == '__main__':
+    fea = Fea(os.path.join(ROOT, 'exercise3_3_mesh.m'), spring_constant=0.0)
+    
+    print(f"this is delta: {abs(fea.u[-1])}")
+
+
+# %%
+# %% Exercise 3.3  -  slender truss column: effective EI from bending, then buckling vs Euler (3.21)
+
+def find_pcrit(fea, L):
+    
+
+    F     = abs(fea.loads[:, 2].sum())      # total tip load from the .m file
+    delta = abs(fea.u[-1])                  # tip deflection at plotdof
+    EI    = F * L**3 / (3 * delta)          # cantilever: delta = F L^3 / (3 EI)
+    return EI, np.pi**2 * EI / (4 * L**2)
+
+if __name__ == '__main__':
+    mesh = os.path.join(ROOT, 'exercise3_3_mesh.m')
+    L    = 20                               # beam length
+
+    # 1) Bending test (Figure 3.4): small tip load from the .m file -> EI and P_crit
+    fea = Fea(mesh, plot=False)
+    EI, P_crit = find_pcrit(fea, L)
+    print(f'EI = {EI:.4f},  P_crit = {P_crit:.6f}')
+
+    # 2) Buckling (Figure 3.3): new loads = compression slightly above P_crit + tiny imperfection
+    P      = 1.1 * P_crit
+    nincr  = 20
+    loads  = np.array([[41, 1, -P/2],       # compression, top and bottom tip node
+                       [42, 1, -P/2],
+                       [41, 2, -1e-3*P]])   # imperfection, otherwise it never buckles
+    
+    neqn   = fea.X.shape[0] * DOF_PER_NODE
+    ne     = fea.IX.shape[0]
+    D, u, _ = newton_raphson(fea.X, fea.IX, ne, neqn, fea.mprop, fea.bound,
+                             buildload(loads, neqn), nincr, 100, 1e-8, fea.plotdof, 0.0)
+
+    # # 3) Load-displacement curve compared with Euler
+    P_axial = np.linspace(0, P, nincr + 1)  # axial load at each increment
+    plt.figure(3)
+    plt.plot(abs(u), P_axial, 'o-', markersize=3, label='Newton-Raphson')
+    plt.axhline(P_crit, color='r', linestyle='--', label=f'Euler $P_{{crit}}$ = {P_crit:.5f}')
+    plt.xlabel('Sideways tip displacement |v|')
+    plt.ylabel('Axial load P')
+    plt.title('Exercise 3.3: buckling of the truss column')
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+# %%

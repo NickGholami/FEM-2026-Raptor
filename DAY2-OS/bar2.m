@@ -21,7 +21,7 @@ IX = [
 // % Material properties for the rubber (Signorini) material:
 // %   mprop = [ A  c1  c2  c3  c4 ]
 mprop = [
-    2.0    1.0    50.0    0.1    100.0
+    1.0    2.0    1.0    50.0    0.1    100.0
 ];
 
 % Prescribed load: node, local DOF (1=x, 2=y), FINAL force value
