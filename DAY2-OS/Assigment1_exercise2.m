@@ -210,6 +210,7 @@ bound = [
 3	2	0
 51	2	0
 54	2	0];
+
 % Nodal loads: node_id, degree of freedom (1 - x, 2 - y), load
 loads = [ 24	2   100 
           30	2  -100 ];

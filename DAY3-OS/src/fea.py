@@ -375,14 +375,6 @@ if __name__ == '__main__':
         ana = analytical_vonmises(fea.mprop, fea.X, fea.IX, fea.u, k)
         PlotForceDisplacement(fea.u, fea.P, ana, label=f'k = {k}')
     plt.show()
-# %% Exercise 3.3  
-if __name__ == '__main__':
-    fea = Fea(os.path.join(ROOT, 'exercise3_3_mesh.m'), spring_constant=0.0)
-    
-    print(f"this is delta: {abs(fea.u[-1])}")
-
-
-# %%
 # %% Exercise 3.3  -  slender truss column: effective EI from bending, then buckling vs Euler (3.21)
 
 def find_pcrit(fea, L):
@@ -398,7 +390,7 @@ if __name__ == '__main__':
     L    = 20                               # beam length
 
     # 1) Bending test (Figure 3.4): small tip load from the .m file -> EI and P_crit
-    fea = Fea(mesh, plot=False)
+    fea = Fea(mesh, plot=True)
     EI, P_crit = find_pcrit(fea, L)
     print(f'EI = {EI:.4f},  P_crit = {P_crit:.6f}')
 

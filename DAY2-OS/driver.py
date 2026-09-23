@@ -11,7 +11,7 @@ from src.fea import Fea
 # Define the input files to analyse (standard FEM course Matlab input format).
 # Add or remove entries here to run the solver over several models in one go.
 input_files = [
-    "TrussExercise2_2026.m"
+    "Assigment1_exercise2.m"
 ]
 
 # Perform FEA on each input file in turn
