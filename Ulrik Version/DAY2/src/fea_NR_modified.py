@@ -6,6 +6,7 @@ from matplotlib.lines import Line2D
 import math
 import re
 from scipy.sparse.linalg import spsolve
+from scipy.sparse.linalg import splu
 
 from src.plotsupports    import plotsupports
 from src.plotloads       import plotloads
@@ -58,21 +59,24 @@ class Fea:
         deltaP_vec = buildload(X, IX, ne, P.copy(), loads, mprop) * deltaP
         eps_stop = 1e-8
 
-        # Newton Rhapson loop
+        # Newton Rhapson modified loop
         for i in range(nincr):
             P = P + deltaP_vec
+            Kmatr = sps.csc_matrix((neqn, neqn))
+            Kmatr = buildstiff(X, IX, ne, mprop, Kmatr, strain)
+            Kmatr = enforce_matrix(Kmatr, bound)
+            K_factor = splu(Kmatr)
+
             for iteration in range(int(self.i_max)):
                 R_int = np.zeros((neqn, 1))
                 strain, stress, N, R_int = recover(mprop, X, IX, D, ne, strain, stress, N, R_int)
                 R = R_int - P
+
                 rhs_BC = enforce_rhs(- R, Kmatr, bound)
                 if np.linalg.norm(rhs_BC) <= eps_stop * abs(Pfinal):
                     break
-                Kmatr = sps.csc_matrix((neqn, neqn))
-                Kmatr = buildstiff(X, IX, ne, mprop, Kmatr, strain)
-                Kmatr = enforce_matrix(Kmatr, bound)
 
-                deltaD = solve_displacements(Kmatr, rhs_BC)    
+                deltaD = K_factor.solve(rhs_BC)
                 D = D + deltaD
             else:
                 raise RuntimeError(f"Did not converge within max iterations")
@@ -102,7 +106,7 @@ def plot_comparison(X, mprop, u_history, P_history, nincr):
     plt.figure(2)
     plt.clf()
     plt.plot(u_ref, P_ref, "black", label="Reference")
-    plt.plot(u_history, P_history, "red", label= f"Newton Rhapson - {nincr} load increments")
+    plt.plot(u_history, P_history, "red", label= f"Newton Rhapson modified- {nincr} load increments")
     plt.xlabel("Displacement u")
     plt.ylabel("Force P")
     plt.grid(True)
